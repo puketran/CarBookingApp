@@ -1,0 +1,10 @@
+CREATE TABLE IF NOT EXISTS otp_codes (
+  id         INT PRIMARY KEY AUTO_INCREMENT,
+  email      VARCHAR(255) NOT NULL,
+  code_hash  VARCHAR(255) NOT NULL,
+  expires_at TIMESTAMP NOT NULL,
+  attempts   INT NOT NULL DEFAULT 0,
+  used       BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_otp_email (email)
+);

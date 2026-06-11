@@ -1,11 +1,11 @@
 # Office Car Booking — User Guide (1 page)
 
 ## Logging in
-1. Open the app URL and enter your **company email**.
-2. A **6-digit code** is sent to your email (in dev it's printed to the server console).
-3. Enter the code → you're in. Codes expire in 5 minutes and are single-use.
+1. Open the app URL and sign in with your **email + password**.
+2. First time, or forgot it? Tap **"Set / forgot password"** → enter your email → you get a **6-digit code** (dev: printed to the server console) → enter the code + a new password. New emails self-register as an employee.
+3. Codes expire in 5 minutes and are single-use. Change your password anytime from **Profile**.
 
-Only registered emails receive a code. If you don't get one, ask an admin to add you.
+Seeded demo accounts use the password **`password123`**.
 
 ## Roles & what you can do
 

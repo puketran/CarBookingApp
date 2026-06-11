@@ -38,7 +38,7 @@ If anything in the older docs conflicts with `thiet-ke-cap-nhat-email-otp-railwa
 - Frontend: React + Ant Design + Vite + react-router-dom + axios + dayjs
 - Backend: Node.js / Express + mysql2 + jsonwebtoken + express-validator + express-rate-limit + helmet + cors
 - Database: MySQL on **Railway** (connected via `DATABASE_URL`; mysql2 pool is lazy)
-- Auth: **Email OTP** — 6-digit code, **SHA-256 hash** in DB (salted with email), 5-min expiry, single-use; JWT (12h) carries the role
+- Auth: **email + password** login (password hashed with Node **scrypt**, salted). **OTP is register/forgot-password only** — 6-digit code (SHA-256, 5-min, single-use) → `set-password`. **Open self-registration** (any email can OTP→set-password to create an `employee`). JWT (12h) carries the role.
 - Email: pluggable `server/services/mailer.js`. **Resend is wired** — sends real email when `RESEND_API_KEY` + `EMAIL_FROM` are set, else logs the OTP to the server console (dev default).
 - Hosting: Railway (Hobby, 24/7). **Production is single-service**: in `NODE_ENV=production` Express serves the built React app (`client/dist`) + API on one port. App not deployed yet (DB is); deploy = the remaining 👤 tasks in `todos/d14.md`.
 
@@ -77,7 +77,7 @@ cd server && npm install && npm run migrate && npm run seed && npm run dev   # :
 # frontend — open this in the browser
 cd client && npm install && npm run dev                                       # :5173
 ```
-- **Login:** enter a seeded email → the 6-digit code prints in the **backend console** (no email in dev) → enter it.
+- **Login:** seeded accounts use password **`password123`** (set by `npm run seed`). "Set / forgot password" emails an OTP — in dev the 6-digit code prints in the **backend console**.
 - **LAN access:** Vite is `host:true`; other devices on the same Wi-Fi open `http://<this-machine-LAN-IP>:5173` (only :5173 needs exposing; `/api` is proxied). Find IP: `ipconfig getifaddr en0`.
 - `DATABASE_URL` must be the Railway **public** proxy URL (`*.proxy.rlwy.net`), not the `*.railway.internal` one.
 
@@ -86,7 +86,7 @@ cd client && npm install && npm run dev                                       # 
 Tables: `users`, `otp_codes`, `vehicles`, `bookings`, `feedback`, plus `schema_migrations`.
 Run `npm run migrate` (idempotent — applies only new files) then `npm run seed` (only seeds when empty; backfills vehicle media).
 
-Seeded users (the only accounts that can log in):
+Seeded users (default password **`password123`**; new emails can self-register via OTP):
 
 | email | role |
 |---|---|
@@ -97,7 +97,7 @@ Seeded users (the only accounts that can log in):
 
 ## Implemented API (`/api/v1`)
 
-- **Auth/health:** `GET /health` · `GET /slots` · `POST /auth/request-otp` · `POST /auth/verify-otp` · `GET /me` · `GET /admin/ping`
+- **Auth/health:** `GET /health` · `GET /slots` · `POST /auth/login` · `POST /auth/request-otp` · `POST /auth/set-password` · `PATCH /auth/password` · `GET /me` · `GET /admin/ping`
 - **Bookings:** `GET /vehicles/available?date=` · `GET /bookings` (scoped) · `GET /bookings/:id` · `POST /bookings` (blocks if no-show-blocked) · `PATCH /bookings/:id/status`
 - **Driver:** `GET /driver/trips` · `PATCH /driver/trips/:id` (confirm/decline/complete/no_show) · `GET /driver/vehicles` · `PATCH /driver/vehicles/:id/status`
 - **Admin — vehicles:** `GET/POST /vehicles` · `PUT/DELETE /vehicles/:id` (soft-delete → `inactive`)
@@ -121,7 +121,7 @@ All `/driver/*` require role `driver`; `/admin/*`, `/dashboard/*`, `/calendar`, 
 2. DB enforces `UNIQUE (vehicle_id, booking_date, slot_start)` as a hard safety net; catch error 1062 → `409 SLOT_CONFLICT`.
 3. Time slots are fixed (08:00-10:00, 10:30-12:30, 13:00-15:00, 15:30-17:30, 18:00-20:00). Slot not in the list → `422 INVALID_SLOT`.
 4. Booked slots disappear from the employee booking screen. Fully-booked days are disabled on the calendar.
-5. Email OTP: if an email isn't in the system, still return a generic "if valid, OTP sent" message — never reveal whether an email exists. Lock after 5 wrong attempts; rate-limit 5 requests/email/hour.
+5. Auth: login is **email + password**. OTP is only for register/forgot → `set-password` (open self-registration creates an `employee`). OTP: 6-digit, SHA-256, 5-min, single-use; lock after 5 wrong attempts; rate-limit 5 requests/email/hour. Logged-in users change their password at `PATCH /auth/password` (Profile screen).
 6. Booking statuses: pending → approved/rejected → completed/cancelled/no_show. completed/cancelled/rejected/no_show are terminal. Employee can only cancel own *pending*.
 7. No-show strikes: a **driver** can mark an approved trip `no_show`. `noshow_limit` (default 3) no-shows in a calendar month → `booking_blocked_until = today + ban_months` (default 2) and `POST /bookings` returns `403 USER_BLOCKED`. Admins view counts and unblock at `/admin/users`.
 8. Weekly limit: a user may hold at most `bookings_per_week` (default 1) non-cancelled bookings per **Mon–Sun week** (by trip date) → else `403 WEEKLY_LIMIT`.

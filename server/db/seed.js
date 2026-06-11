@@ -4,6 +4,7 @@
 // Also backfills vehicle media (image/transmission/parking) added in 006.
 require('dotenv').config();
 const pool = require('../config/db');
+const { hashPassword } = require('../services/password');
 
 const SUPER_ADMIN_EMAIL = process.env.SUPER_ADMIN_EMAIL || 'super@company.com';
 
@@ -64,6 +65,14 @@ async function ensureVehicleMedia() {
   console.log(rows.length ? `• vehicles: set media on ${rows.length} row(s)` : '• vehicles: media already set');
 }
 
+// Dev convenience: give seeded accounts a default password so login works
+// without going through the OTP set-password flow first.
+async function ensurePasswords() {
+  const [rows] = await pool.query('SELECT user_id FROM users WHERE password_hash IS NULL');
+  for (const r of rows) await pool.query('UPDATE users SET password_hash = ? WHERE user_id = ?', [hashPassword('password123'), r.user_id]);
+  console.log(rows.length ? `• users: set default password (password123) on ${rows.length} account(s)` : '• users: passwords already set');
+}
+
 async function main() {
   await seedIfEmpty(
     'vehicles',
@@ -77,6 +86,7 @@ async function main() {
   );
   await ensureVehicleMedia();
   await ensureVehicleDriver();
+  await ensurePasswords();
   await pool.end();
   console.log('\nSeed complete.');
 }

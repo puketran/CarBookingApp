@@ -1,9 +1,10 @@
 const express = require('express');
-const { query } = require('express-validator');
+const { query, body, param } = require('express-validator');
 
 const { validate } = require('../middleware/validate');
 const { requireAuth } = require('../middleware/auth');
-const { getAvailable } = require('../controllers/vehicleController');
+const { requireRole } = require('../middleware/role');
+const { getAvailable, list, create, update, remove, active, availability } = require('../controllers/vehicleController');
 
 const router = express.Router();
 
@@ -15,5 +16,23 @@ router.get(
   validate,
   getAvailable,
 );
+
+// Employee booking picker — any authenticated user.
+router.get('/active', requireAuth, active);
+router.get('/:id/availability', requireAuth, param('id').isInt(), validate, availability);
+
+// Vehicle management — admin only.
+router.get('/', requireAuth, requireRole('admin'), list);
+router.post(
+  '/',
+  requireAuth,
+  requireRole('admin'),
+  body('vehicle_name').isString().notEmpty(),
+  body('capacity').isInt({ min: 1 }),
+  validate,
+  create,
+);
+router.put('/:id', requireAuth, requireRole('admin'), param('id').isInt(), validate, update);
+router.delete('/:id', requireAuth, requireRole('admin'), param('id').isInt(), validate, remove);
 
 module.exports = router;

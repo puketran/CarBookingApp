@@ -1,14 +1,20 @@
 const pool = require('../config/db');
 const SLOTS = require('../config/slots');
+const { notify, notifyAdmins } = require('../services/notify');
+const { getSettings } = require('../services/settings');
 
 const slotSet = new Set(SLOTS.map((s) => `${s.slot_start}-${s.slot_end}`));
-const isAdminRole = (role) => role === 'admin' || role === 'super_admin';
+const isAdminRole = (role) => role === 'admin';
 
 const BOOKING_SELECT = `
-  SELECT b.booking_id, b.vehicle_id, v.vehicle_name, b.user_id, u.name AS employee_name,
-         u.department, b.contact_number, b.destination, b.purpose, b.passenger_count,
-         b.booking_date, TIME_FORMAT(b.slot_start, '%H:%i') AS slot_start,
-         TIME_FORMAT(b.slot_end, '%H:%i') AS slot_end, b.status, b.created_at, b.updated_at
+  SELECT b.booking_id,
+         CONCAT('BK-', DATE_FORMAT(b.created_at, '%Y'), '-', LPAD(b.booking_id, 4, '0')) AS code,
+         b.vehicle_id, v.vehicle_name, v.image_url, b.user_id,
+         COALESCE(b.requester_name, u.name) AS employee_name,
+         COALESCE(b.department, u.department) AS department,
+         b.contact_number, b.destination, b.purpose, b.passenger_count,
+         DATE_FORMAT(b.booking_date, '%Y-%m-%d') AS booking_date, TIME_FORMAT(b.slot_start, '%H:%i') AS slot_start,
+         TIME_FORMAT(b.slot_end, '%H:%i') AS slot_end, b.status, b.driver_confirmed, b.created_at, b.updated_at
   FROM bookings b
   JOIN users u ON b.user_id = u.user_id
   JOIN vehicles v ON b.vehicle_id = v.vehicle_id`;
@@ -16,10 +22,35 @@ const BOOKING_SELECT = `
 // POST /bookings — lock a slot as pending. App-level check + DB unique constraint.
 async function create(req, res, next) {
   try {
-    const { vehicle_id, booking_date, slot_start, slot_end, destination, purpose, passenger_count, contact_number } = req.body;
+    const { vehicle_id, booking_date, slot_start, slot_end, destination, purpose, passenger_count, contact_number, requester_name, department } = req.body;
 
     if (!slotSet.has(`${slot_start}-${slot_end}`)) {
       return res.status(422).json({ error: 'INVALID_SLOT', message: 'Slot not in allowed list' });
+    }
+
+    // No-show block: 3 no-shows in a month → blocked from booking until month-end.
+    const [[me]] = await pool.query(
+      'SELECT DATE_FORMAT(booking_blocked_until, "%Y-%m-%d") AS blocked_until FROM users WHERE user_id = ? AND booking_blocked_until >= CURDATE()',
+      [req.user.user_id],
+    );
+    if (me) {
+      return res.status(403).json({
+        error: 'USER_BLOCKED',
+        message: `Too many no-shows — booking is blocked until ${me.blocked_until}.`,
+      });
+    }
+
+    // Weekly limit: at most N non-cancelled bookings per Mon–Sun week (by trip date).
+    const { bookings_per_week } = await getSettings();
+    const [[{ wk }]] = await pool.query(
+      "SELECT COUNT(*) AS wk FROM bookings WHERE user_id = ? AND status IN ('pending','approved','completed') AND YEARWEEK(booking_date, 1) = YEARWEEK(?, 1)",
+      [req.user.user_id, booking_date],
+    );
+    if (wk >= bookings_per_week) {
+      return res.status(403).json({
+        error: 'WEEKLY_LIMIT',
+        message: `You can book at most ${bookings_per_week} time(s) per week.`,
+      });
     }
 
     // App-level conflict check (only pending/approved count as taken).
@@ -34,12 +65,15 @@ async function create(req, res, next) {
     try {
       const [result] = await pool.query(
         `INSERT INTO bookings
-           (vehicle_id, user_id, destination, purpose, passenger_count, booking_date, slot_start, slot_end, status, contact_number)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
-        [vehicle_id, req.user.user_id, destination, purpose, passenger_count, booking_date, slot_start, slot_end, contact_number],
+           (vehicle_id, user_id, destination, purpose, passenger_count, booking_date, slot_start, slot_end, status, contact_number, requester_name, department)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
+        [vehicle_id, req.user.user_id, destination, purpose, passenger_count, booking_date, slot_start, slot_end, contact_number, requester_name || null, department || null],
       );
+      const code = `BK-${new Date().getFullYear()}-${String(result.insertId).padStart(4, '0')}`;
+      notifyAdmins('booking_new', `New booking ${code} from ${req.user.email} — awaiting approval`, '/admin');
       return res.status(201).json({
         booking_id: result.insertId,
+        code,
         status: 'pending',
         message: 'Booking submitted. Awaiting admin approval.',
       });
@@ -142,10 +176,14 @@ async function updateStatus(req, res, next) {
     }
 
     await pool.query('UPDATE bookings SET status = ? WHERE booking_id = ?', [next_status, req.params.id]);
+    // Notify the booking owner when someone else changes their booking's status.
+    if (booking.user_id !== req.user.user_id) {
+      notify(booking.user_id, `booking_${next_status}`, `Your booking #${req.params.id} was ${next_status}`, '/my-bookings');
+    }
     res.json({ booking_id: Number(req.params.id), status: next_status });
   } catch (err) {
     next(err);
   }
 }
 
-module.exports = { create, list, getOne, updateStatus };
+module.exports = { create, list, getOne, updateStatus, BOOKING_SELECT };

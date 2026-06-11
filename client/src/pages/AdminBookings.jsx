@@ -1,14 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Card, Table, Tag, Button, Select, Space, App } from 'antd';
+import { Card, Table, Button, Select, Space, App } from 'antd';
 import api from '../api/axios';
+import StatusBadge from '../components/StatusBadge';
 
-const STATUS_COLOR = {
-  pending: 'gold',
-  approved: 'green',
-  rejected: 'red',
-  completed: 'blue',
-  cancelled: 'default',
-};
 const STATUSES = ['pending', 'approved', 'rejected', 'completed', 'cancelled'];
 
 export default function AdminBookings() {
@@ -51,7 +45,7 @@ export default function AdminBookings() {
     { title: 'Employee', dataIndex: 'employee_name' },
     { title: 'Dept', dataIndex: 'department' },
     { title: 'Destination', dataIndex: 'destination' },
-    { title: 'Status', dataIndex: 'status', render: (s) => <Tag color={STATUS_COLOR[s]}>{s}</Tag> },
+    { title: 'Status', dataIndex: 'status', render: (s) => <StatusBadge status={s} /> },
     {
       title: 'Actions',
       render: (_, r) => (

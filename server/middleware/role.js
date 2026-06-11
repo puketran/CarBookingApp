@@ -1,4 +1,4 @@
-// Authorizes by role. Use after requireAuth: requireRole('admin', 'super_admin').
+// Authorizes by role. Use after requireAuth: requireRole('admin') or requireRole('driver').
 function requireRole(...roles) {
   return (req, res, next) => {
     if (!req.user) {

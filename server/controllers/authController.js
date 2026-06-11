@@ -65,11 +65,14 @@ async function verifyOtp(req, res, next) {
 
     await pool.query('UPDATE otp_codes SET used = TRUE WHERE id = ?', [row.id]);
     const [[user]] = await pool.query(
-      'SELECT user_id, name, role FROM users WHERE email = ?',
+      'SELECT user_id, name, department, role FROM users WHERE email = ?',
       [email],
     );
     const token = issue({ user_id: user.user_id, email, role: user.role });
-    return res.json({ token, user: { user_id: user.user_id, name: user.name, role: user.role } });
+    return res.json({
+      token,
+      user: { user_id: user.user_id, name: user.name, email, department: user.department, role: user.role },
+    });
   } catch (err) {
     next(err);
   }

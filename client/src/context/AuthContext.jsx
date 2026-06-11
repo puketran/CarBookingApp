@@ -27,4 +27,5 @@ export function AuthProvider({ children }) {
 }
 
 export const useAuth = () => useContext(AuthContext);
-export const isAdmin = (role) => role === 'admin' || role === 'super_admin';
+export const isAdmin = (role) => role === 'admin';
+export const isDriver = (role) => role === 'driver';

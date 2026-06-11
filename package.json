@@ -1,0 +1,13 @@
+{
+  "name": "carbooking",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Office Car Booking — single-service deploy (Express serves the built React app + API)",
+  "scripts": {
+    "build": "npm install --prefix server && npm install --prefix client && npm run build --prefix client",
+    "start": "npm run migrate --prefix server && npm run seed --prefix server && npm start --prefix server"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

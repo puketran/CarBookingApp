@@ -4,7 +4,7 @@ const mailer = require('../services/mailer');
 const { issue } = require('../services/jwt');
 const { hashPassword, verifyPassword } = require('../services/password');
 
-const OTP_TTL_MIN = 5;
+const OTP_TTL_MIN = 15; // generous window so slow email delivery doesn't expire the code
 const MAX_ATTEMPTS = 5;
 
 const GENERIC = { message: 'If the email is valid, a code has been sent. / Nếu email hợp lệ, mã đã được gửi.' };
@@ -48,16 +48,18 @@ async function setPassword(req, res, next) {
   try {
     const email = String(req.body.email).toLowerCase().trim();
     const code = String(req.body.code);
-    const [[row]] = await pool.query(
-      'SELECT * FROM otp_codes WHERE email = ? AND used = FALSE AND expires_at > NOW() ORDER BY id DESC LIMIT 1',
-      [email],
+    // Match ANY recent unused, unexpired, unlocked code for this email — so a
+    // slightly-older code still works even if the user re-requested a newer one.
+    const [rows] = await pool.query(
+      'SELECT * FROM otp_codes WHERE email = ? AND used = FALSE AND expires_at > NOW() AND attempts < ? ORDER BY id DESC LIMIT 10',
+      [email, MAX_ATTEMPTS],
     );
-    if (!row || row.attempts >= MAX_ATTEMPTS) return res.status(401).json(INVALID_OTP);
-    if (!otp.verify(code, email, row.code_hash)) {
-      await pool.query('UPDATE otp_codes SET attempts = attempts + 1 WHERE id = ?', [row.id]);
+    const match = rows.find((r) => otp.verify(code, email, r.code_hash));
+    if (!match) {
+      if (rows[0]) await pool.query('UPDATE otp_codes SET attempts = attempts + 1 WHERE id = ?', [rows[0].id]);
       return res.status(401).json(INVALID_OTP);
     }
-    await pool.query('UPDATE otp_codes SET used = TRUE WHERE id = ?', [row.id]);
+    await pool.query('UPDATE otp_codes SET used = TRUE WHERE id = ?', [match.id]);
 
     const hash = hashPassword(req.body.password);
     let [[user]] = await pool.query('SELECT * FROM users WHERE email = ?', [email]);

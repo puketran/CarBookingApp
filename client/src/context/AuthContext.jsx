@@ -23,7 +23,15 @@ export function AuthProvider({ children }) {
     setUser(null);
   };
 
-  return <AuthContext.Provider value={{ user, login, logout }}>{children}</AuthContext.Provider>;
+  const updateUser = (partial) => {
+    setUser((prev) => {
+      const next = { ...prev, ...partial };
+      localStorage.setItem('user', JSON.stringify(next));
+      return next;
+    });
+  };
+
+  return <AuthContext.Provider value={{ user, login, logout, updateUser }}>{children}</AuthContext.Provider>;
 }
 
 export const useAuth = () => useContext(AuthContext);

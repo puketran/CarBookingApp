@@ -86,4 +86,22 @@ async function changePassword(req, res, next) {
   }
 }
 
-module.exports = { login, requestOtp, setPassword, changePassword, GENERIC };
+// PATCH /auth/profile — logged-in user updates their name / department.
+async function updateProfile(req, res, next) {
+  try {
+    const set = [];
+    const params = [];
+    if (Object.prototype.hasOwnProperty.call(req.body, 'name')) { set.push('name = ?'); params.push(String(req.body.name).trim()); }
+    if (Object.prototype.hasOwnProperty.call(req.body, 'department')) { set.push('department = ?'); params.push(String(req.body.department).trim()); }
+    if (set.length) {
+      params.push(req.user.user_id);
+      await pool.query(`UPDATE users SET ${set.join(', ')} WHERE user_id = ?`, params);
+    }
+    const [[u]] = await pool.query('SELECT user_id, name, email, department, role FROM users WHERE user_id = ?', [req.user.user_id]);
+    res.json(u);
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { login, requestOtp, setPassword, changePassword, updateProfile, GENERIC };

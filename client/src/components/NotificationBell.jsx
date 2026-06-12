@@ -2,11 +2,13 @@ import { useEffect, useState } from 'react';
 import { Badge, Dropdown, Button, List, Empty } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/axios';
+import { useLang } from '../i18n';
 
 export default function NotificationBell() {
   const [unread, setUnread] = useState(0);
   const [items, setItems] = useState([]);
   const navigate = useNavigate();
+  const { t } = useLang();
 
   const pollCount = async () => {
     try { setUnread((await api.get('/notifications/unread-count')).data.unread); } catch { /* ignore */ }
@@ -36,7 +38,7 @@ export default function NotificationBell() {
   const dropdownRender = () => (
     <div style={{ width: 320, background: '#fff', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.15)' }}>
       {items.length === 0 ? (
-        <div style={{ padding: 16 }}><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No notifications" /></div>
+        <div style={{ padding: 16 }}><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('notif.none')} /></div>
       ) : (
         <List
           size="small"
@@ -53,7 +55,7 @@ export default function NotificationBell() {
         />
       )}
       <div style={{ borderTop: '1px solid #f0f0f0', padding: 8, textAlign: 'center' }}>
-        <Button type="link" size="small" onClick={() => navigate('/notifications')}>View all</Button>
+        <Button type="link" size="small" onClick={() => navigate('/notifications')}>{t('notif.viewAll')}</Button>
       </div>
     </div>
   );

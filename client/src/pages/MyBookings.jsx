@@ -4,6 +4,7 @@ import dayjs from 'dayjs';
 import api from '../api/axios';
 import BookingCard from '../components/BookingCard';
 import StatusBadge from '../components/StatusBadge';
+import { useLang } from '../i18n';
 
 const FILTERS = {
   all: () => true,
@@ -19,6 +20,7 @@ export default function MyBookings() {
   const [groupByDay, setGroupByDay] = useState(false);
   const [detail, setDetail] = useState(null);
   const { message } = App.useApp();
+  const { t } = useLang();
 
   const load = async () => {
     setLoading(true);
@@ -26,7 +28,7 @@ export default function MyBookings() {
       const res = await api.get('/bookings', { params: { limit: 100 } });
       setData(res.data.data);
     } catch {
-      message.error('Could not load your bookings.');
+      message.error(t('my.loadErr'));
     } finally {
       setLoading(false);
     }
@@ -37,11 +39,11 @@ export default function MyBookings() {
   const cancel = async (id) => {
     try {
       await api.patch(`/bookings/${id}/status`, { status: 'cancelled' });
-      message.success('Booking cancelled.');
+      message.success(t('my.cancelled'));
       setDetail(null);
       load();
     } catch {
-      message.error('Could not cancel (only pending bookings can be cancelled).');
+      message.error(t('my.cancelErr'));
     }
   };
 
@@ -49,12 +51,12 @@ export default function MyBookings() {
 
   return (
     <Card
-      title="My Bookings"
+      title={t('my.title')}
       extra={
         <Space>
-          <span style={{ fontSize: 12, color: '#666' }}>Group by day</span>
+          <span style={{ fontSize: 12, color: '#666' }}>{t('my.groupByDay')}</span>
           <Switch size="small" checked={groupByDay} onChange={setGroupByDay} />
-          <Button onClick={load}>Refresh</Button>
+          <Button onClick={load}>{t('common.refresh')}</Button>
         </Space>
       }
       styles={{ body: { padding: 12 } }}
@@ -63,16 +65,16 @@ export default function MyBookings() {
         activeKey={tab}
         onChange={setTab}
         items={[
-          { key: 'all', label: 'All' },
-          { key: 'upcoming', label: 'Upcoming' },
-          { key: 'past', label: 'Past' },
-          { key: 'cancelled', label: 'Cancelled' },
+          { key: 'all', label: t('my.tabAll') },
+          { key: 'upcoming', label: t('my.tabUpcoming') },
+          { key: 'past', label: t('my.tabPast') },
+          { key: 'cancelled', label: t('my.tabCancelled') },
         ]}
       />
       {loading ? (
         <div style={{ textAlign: 'center', padding: 24 }}><Spin /></div>
       ) : filtered.length === 0 ? (
-        <Empty description="No bookings here" />
+        <Empty description={t('my.none')} />
       ) : groupByDay ? (
         Object.entries(
           filtered.reduce((acc, b) => { (acc[b.booking_date.slice(0, 10)] ||= []).push(b); return acc; }, {}),
@@ -94,18 +96,18 @@ export default function MyBookings() {
         {detail && (
           <>
             <Descriptions column={1} size="small" bordered>
-              <Descriptions.Item label="Status"><StatusBadge status={detail.status} /></Descriptions.Item>
-              <Descriptions.Item label="Date">{detail.booking_date?.slice(0, 10)}</Descriptions.Item>
-              <Descriptions.Item label="Slot">{detail.slot_start}–{detail.slot_end}</Descriptions.Item>
-              <Descriptions.Item label="Vehicle">{detail.vehicle_name}</Descriptions.Item>
-              <Descriptions.Item label="Destination">{detail.destination}</Descriptions.Item>
-              <Descriptions.Item label="Purpose">{detail.purpose || '—'}</Descriptions.Item>
-              <Descriptions.Item label="Passengers">{detail.passenger_count}</Descriptions.Item>
-              <Descriptions.Item label="Contact">{detail.contact_number || '—'}</Descriptions.Item>
+              <Descriptions.Item label={t('f.status')}><StatusBadge status={detail.status} /></Descriptions.Item>
+              <Descriptions.Item label={t('f.date')}>{detail.booking_date?.slice(0, 10)}</Descriptions.Item>
+              <Descriptions.Item label={t('f.slot')}>{detail.slot_start}–{detail.slot_end}</Descriptions.Item>
+              <Descriptions.Item label={t('f.vehicle')}>{detail.vehicle_name}</Descriptions.Item>
+              <Descriptions.Item label={t('f.destination')}>{detail.destination}</Descriptions.Item>
+              <Descriptions.Item label={t('f.purpose')}>{detail.purpose || '—'}</Descriptions.Item>
+              <Descriptions.Item label={t('f.passengers')}>{detail.passenger_count}</Descriptions.Item>
+              <Descriptions.Item label={t('f.phone')}>{detail.contact_number || '—'}</Descriptions.Item>
             </Descriptions>
             {detail.status === 'pending' && (
               <Button danger block style={{ marginTop: 16 }} onClick={() => cancel(detail.booking_id)}>
-                Cancel booking
+                {t('my.cancelBooking')}
               </Button>
             )}
           </>

@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import { Card, Input, Button, Form, Typography, App } from 'antd';
+import { Card, Input, Button, Form, Typography, Space, App } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import { useAuth, isAdmin } from '../context/AuthContext';
+import { useLang } from '../i18n';
+import LanguageSelector from '../components/LanguageSelector';
 
 const landing = (role) => (isAdmin(role) ? '/admin' : role === 'driver' ? '/driver' : '/book');
 
@@ -11,6 +13,7 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
+  const { t } = useLang();
   const navigate = useNavigate();
   const { message } = App.useApp();
 
@@ -21,7 +24,7 @@ export default function Login() {
       login(data.token, data.user);
       navigate(landing(data.user.role), { replace: true });
     } catch {
-      message.error('Wrong email or password.');
+      message.error(t('login.wrongCreds'));
     } finally { setLoading(false); }
   };
 
@@ -31,9 +34,9 @@ export default function Login() {
       await api.post('/auth/request-otp', { email: e });
       setEmail(e);
       setMode('reset');
-      message.success('If the email is valid, a code was sent. (Dev: check the server console.)');
+      message.success(t('login.codeSent'));
     } catch {
-      message.error('Something went wrong.');
+      message.error(t('login.error'));
     } finally { setLoading(false); }
   };
 
@@ -44,52 +47,52 @@ export default function Login() {
       login(data.token, data.user);
       navigate(landing(data.user.role), { replace: true });
     } catch {
-      message.error('Invalid or expired code.');
+      message.error(t('login.invalidCode'));
     } finally { setLoading(false); }
   };
 
   return (
     <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 80 }}>
-      <Card style={{ width: 380 }} title="🚗 Office Car Booking">
+      <Card
+        style={{ width: 380 }}
+        title={t('app.title')}
+        extra={<LanguageSelector />}
+      >
         {mode === 'login' && (
           <Form layout="vertical" onFinish={doLogin}>
-            <Form.Item name="email" label="Email" rules={[{ required: true, type: 'email' }]}>
+            <Form.Item name="email" label={t('login.email')} rules={[{ required: true, type: 'email' }]}>
               <Input placeholder="you@company.com" autoFocus />
             </Form.Item>
-            <Form.Item name="password" label="Password" rules={[{ required: true }]}>
-              <Input.Password placeholder="Your password" />
+            <Form.Item name="password" label={t('login.password')} rules={[{ required: true }]}>
+              <Input.Password />
             </Form.Item>
-            <Button type="primary" htmlType="submit" block loading={loading}>Sign in</Button>
-            <Button type="link" block onClick={() => setMode('request')}>Set / forgot password</Button>
+            <Button type="primary" htmlType="submit" block loading={loading}>{t('login.signIn')}</Button>
+            <Button type="link" block onClick={() => setMode('request')}>{t('login.setForgot')}</Button>
           </Form>
         )}
 
         {mode === 'request' && (
           <Form layout="vertical" onFinish={requestCode}>
-            <Typography.Paragraph type="secondary">
-              Enter your email to receive a one-time code. New here? This also registers you.
-            </Typography.Paragraph>
-            <Form.Item name="email" label="Email" rules={[{ required: true, type: 'email' }]}>
+            <Typography.Paragraph type="secondary">{t('login.requestHint')}</Typography.Paragraph>
+            <Form.Item name="email" label={t('login.email')} rules={[{ required: true, type: 'email' }]}>
               <Input placeholder="you@company.com" autoFocus />
             </Form.Item>
-            <Button type="primary" htmlType="submit" block loading={loading}>Send code</Button>
-            <Button type="link" block onClick={() => setMode('login')}>Back to sign in</Button>
+            <Button type="primary" htmlType="submit" block loading={loading}>{t('login.sendCode')}</Button>
+            <Button type="link" block onClick={() => setMode('login')}>{t('login.backToSignIn')}</Button>
           </Form>
         )}
 
         {mode === 'reset' && (
           <Form layout="vertical" onFinish={setPw}>
-            <Typography.Paragraph type="secondary">
-              We sent a 6-digit code to <b>{email}</b>. (Dev: check the server console.) Enter it and choose a password.
-            </Typography.Paragraph>
-            <Form.Item name="code" label="6-digit code" rules={[{ required: true, len: 6 }]}>
+            <Typography.Paragraph type="secondary">{t('login.resetHint', { email })}</Typography.Paragraph>
+            <Form.Item name="code" label={t('login.code')} rules={[{ required: true, len: 6 }]}>
               <Input placeholder="123456" maxLength={6} autoFocus />
             </Form.Item>
-            <Form.Item name="password" label="New password" rules={[{ required: true, min: 8 }]}>
-              <Input.Password placeholder="At least 8 characters" />
+            <Form.Item name="password" label={t('login.newPassword')} rules={[{ required: true, min: 8 }]}>
+              <Input.Password placeholder={t('login.min8')} />
             </Form.Item>
-            <Button type="primary" htmlType="submit" block loading={loading}>Set password &amp; sign in</Button>
-            <Button type="link" block onClick={() => setMode('login')}>Back to sign in</Button>
+            <Button type="primary" htmlType="submit" block loading={loading}>{t('login.setAndSignIn')}</Button>
+            <Button type="link" block onClick={() => setMode('login')}>{t('login.backToSignIn')}</Button>
           </Form>
         )}
       </Card>

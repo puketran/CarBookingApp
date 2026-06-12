@@ -15,6 +15,7 @@ router.patch(
   '/trips/:id',
   param('id').isInt(),
   body('action').isIn(['confirm', 'decline', 'complete', 'no_show']).withMessage('invalid action'),
+  body('reason').optional().isString().isLength({ max: 500 }),
   validate,
   c.actOnTrip,
 );

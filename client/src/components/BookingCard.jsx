@@ -1,9 +1,11 @@
 import { Card, Button, Popconfirm } from 'antd';
 import StatusBadge from './StatusBadge';
 import { STATUS_HEX } from '../theme';
+import { useLang } from '../i18n';
 
 // Booking summary card for the employee My Bookings list.
 export default function BookingCard({ booking, onCancel, onClick }) {
+  const { t } = useLang();
   const { booking_id, vehicle_name, booking_date, slot_start, slot_end, status, image_url, passenger_count } = booking;
   const code = booking.code || `BK-${String(booking_id).padStart(4, '0')}`;
 
@@ -35,8 +37,8 @@ export default function BookingCard({ booking, onCancel, onClick }) {
           <StatusBadge status={status} />
           {status === 'pending' && onCancel && (
             <div style={{ marginTop: 6 }} onClick={(e) => e.stopPropagation()}>
-              <Popconfirm title="Cancel this booking?" onConfirm={() => onCancel(booking_id)}>
-                <Button danger size="small">Cancel</Button>
+              <Popconfirm title={t('my.cancelConfirm')} onConfirm={() => onCancel(booking_id)} okText={t('common.send')} cancelText={t('common.back')}>
+                <Button danger size="small">{t('common.cancel')}</Button>
               </Popconfirm>
             </div>
           )}

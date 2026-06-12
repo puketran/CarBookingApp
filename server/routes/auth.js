@@ -4,7 +4,7 @@ const { body } = require('express-validator');
 
 const { validate } = require('../middleware/validate');
 const { requireAuth } = require('../middleware/auth');
-const { login, requestOtp, setPassword, changePassword, GENERIC } = require('../controllers/authController');
+const { login, requestOtp, setPassword, changePassword, updateProfile, GENERIC } = require('../controllers/authController');
 
 const router = express.Router();
 
@@ -51,4 +51,14 @@ router.patch(
   changePassword,
 );
 
+router.patch(
+  '/profile',
+  requireAuth,
+  body('name').optional().isString().isLength({ max: 255 }),
+  body('department').optional().isString().isLength({ max: 255 }),
+  validate,
+  updateProfile,
+);
+
 module.exports = router;
+

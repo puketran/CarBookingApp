@@ -1,6 +1,6 @@
 const pool = require('../config/db');
 const { BOOKING_SELECT } = require('./bookingController');
-const { notify } = require('./../services/notify');
+const { notify, notifyAdmins } = require('./../services/notify');
 const { getSettings } = require('./../services/settings');
 
 // After a no-show, if the owner hit the monthly limit, block them for ban_months.
@@ -40,39 +40,48 @@ async function trips(req, res, next) {
 async function actOnTrip(req, res, next) {
   try {
     const { action } = req.body;
+    const reason = (req.body.reason || '').toString().trim();
     const [[b]] = await pool.query(
-      `SELECT b.booking_id, b.status, b.user_id, v.driver_user_id
+      `SELECT b.booking_id, b.status, b.user_id, b.driver_confirmed, (b.booking_date = CURDATE()) AS is_today
        FROM bookings b JOIN vehicles v ON b.vehicle_id = v.vehicle_id
-       WHERE b.booking_id = ?`,
-      [req.params.id],
+       WHERE b.booking_id = ? AND v.driver_user_id = ?`,
+      [req.params.id, req.user.user_id],
     );
-    if (!b || b.driver_user_id !== req.user.user_id) {
+    if (!b) {
       return res.status(404).json({ error: 'NOT_FOUND', message: 'Resource does not exist' });
     }
-    if (b.status !== 'approved') {
-      return res.status(422).json({ error: 'VALIDATION_ERROR', message: 'Only approved trips can be acted on' });
-    }
+    // No admin approval step: the driver confirms/denies pending (or approved) trips directly.
+    const actionable = b.status === 'pending' || b.status === 'approved';
 
     if (action === 'confirm') {
-      await pool.query('UPDATE bookings SET driver_confirmed = 1 WHERE booking_id = ?', [b.booking_id]);
+      if (!actionable) return res.status(422).json({ error: 'VALIDATION_ERROR', message: 'This trip can no longer be confirmed' });
+      await pool.query("UPDATE bookings SET status = 'approved', driver_confirmed = 1 WHERE booking_id = ?", [b.booking_id]);
+      notify(b.user_id, 'trip_confirm', `A driver confirmed your trip (booking #${b.booking_id})`, '/my-bookings');
     } else if (action === 'decline') {
-      // Send back to pending so an admin can reassign/re-approve.
-      await pool.query("UPDATE bookings SET driver_confirmed = 0, status = 'pending' WHERE booking_id = ?", [b.booking_id]);
-    } else if (action === 'complete') {
-      await pool.query("UPDATE bookings SET status = 'completed' WHERE booking_id = ?", [b.booking_id]);
-    } else if (action === 'no_show') {
-      await pool.query("UPDATE bookings SET status = 'no_show' WHERE booking_id = ?", [b.booking_id]);
-      await applyStrike(b.booking_id);
+      if (!actionable) return res.status(422).json({ error: 'VALIDATION_ERROR', message: 'This trip can no longer be denied' });
+      await pool.query("UPDATE bookings SET status = 'rejected', driver_confirmed = 0 WHERE booking_id = ?", [b.booking_id]);
+      const tail = reason ? `: ${reason}` : '';
+      notify(b.user_id, 'trip_declined', `A driver declined your trip (booking #${b.booking_id})${tail}`, '/my-bookings');
+      notifyAdmins('trip_declined', `Driver declined booking #${b.booking_id}${tail}`, '/admin');
+    } else if (action === 'complete' || action === 'no_show') {
+      // Only after the driver has confirmed, and only on the trip's day.
+      if (b.status !== 'approved' || b.driver_confirmed !== 1) {
+        return res.status(422).json({ error: 'VALIDATION_ERROR', message: 'Confirm the trip first.' });
+      }
+      if (!b.is_today) {
+        return res.status(422).json({ error: 'VALIDATION_ERROR', message: 'This is only available on the trip day.' });
+      }
+      if (action === 'complete') {
+        await pool.query("UPDATE bookings SET status = 'completed' WHERE booking_id = ?", [b.booking_id]);
+        notify(b.user_id, 'trip_complete', `Your trip was marked completed (booking #${b.booking_id})`, '/my-bookings');
+      } else {
+        await pool.query("UPDATE bookings SET status = 'no_show' WHERE booking_id = ?", [b.booking_id]);
+        await applyStrike(b.booking_id);
+        notify(b.user_id, 'trip_no_show', `Your trip was marked as a no-show (booking #${b.booking_id})`, '/my-bookings');
+      }
     } else {
       return res.status(422).json({ error: 'VALIDATION_ERROR', message: 'Unknown action' });
     }
-    const MSG = {
-      confirm: 'A driver confirmed your trip',
-      decline: 'A driver declined your trip — it is back to pending',
-      complete: 'Your trip was marked completed',
-      no_show: 'Your trip was marked as a no-show',
-    };
-    notify(b.user_id, `trip_${action}`, `${MSG[action]} (booking #${b.booking_id})`, '/my-bookings');
     res.json({ booking_id: Number(req.params.id), action });
   } catch (err) {
     next(err);

@@ -9,6 +9,8 @@ const MAX_ATTEMPTS = 5;
 
 const GENERIC = { message: 'If the email is valid, a code has been sent. / Nếu email hợp lệ, mã đã được gửi.' };
 const INVALID_OTP = { error: 'INVALID_OTP', message: 'Invalid or expired code. / Mã sai hoặc đã hết hạn.' };
+const EMAIL_EXISTS = { error: 'EMAIL_EXISTS', message: 'An account with this email already exists. Please sign in.' };
+const NO_ACCOUNT = { error: 'NO_ACCOUNT', message: 'No account found for this email. Please register.' };
 
 const userPublic = (u) => ({ user_id: u.user_id, name: u.name, email: u.email, department: u.department, role: u.role });
 
@@ -27,10 +29,17 @@ async function login(req, res, next) {
   }
 }
 
-// POST /auth/request-otp — OTP for register or password reset (open registration: any email).
+// POST /auth/request-otp — OTP for register or password reset.
+// purpose='register' must NOT create a duplicate: reject up-front if the email
+// already has an account (so no code is even sent). purpose='reset' stays
+// generic (anti-enumeration) and is validated at set-password.
 async function requestOtp(req, res, next) {
   try {
     const email = String(req.body.email).toLowerCase().trim();
+    if (req.body.purpose === 'register') {
+      const [[existing]] = await pool.query('SELECT user_id FROM users WHERE email = ?', [email]);
+      if (existing) return res.status(409).json(EMAIL_EXISTS);
+    }
     const code = otp.generateCode();
     await pool.query(
       'INSERT INTO otp_codes (email, code_hash, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL ? MINUTE))',
@@ -59,10 +68,19 @@ async function setPassword(req, res, next) {
       if (rows[0]) await pool.query('UPDATE otp_codes SET attempts = attempts + 1 WHERE id = ?', [rows[0].id]);
       return res.status(401).json(INVALID_OTP);
     }
-    await pool.query('UPDATE otp_codes SET used = TRUE WHERE id = ?', [match.id]);
-
     const hash = hashPassword(req.body.password);
+    const isRegister = req.body.purpose === 'register';
     let [[user]] = await pool.query('SELECT * FROM users WHERE email = ?', [email]);
+
+    // Register creates a new employee but never a duplicate; reset only updates
+    // an existing account (it does not silently create one).
+    if (isRegister) {
+      if (user) return res.status(409).json(EMAIL_EXISTS);
+    } else if (!user) {
+      return res.status(404).json(NO_ACCOUNT);
+    }
+
+    await pool.query('UPDATE otp_codes SET used = TRUE WHERE id = ?', [match.id]);
     if (user) {
       await pool.query('UPDATE users SET password_hash = ? WHERE user_id = ?', [hash, user.user_id]);
     } else {

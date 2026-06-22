@@ -1,4 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
+import { Spin } from 'antd';
 import { useAuth, isAdmin, isDriver } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import EmployeeLayout from './layouts/EmployeeLayout';
@@ -41,6 +42,10 @@ const admin = (el) => <ProtectedRoute roles={['admin']}>{el}</ProtectedRoute>;
 const auth = (el) => <ProtectedRoute>{el}</ProtectedRoute>;
 
 export default function App() {
+  const { loading } = useAuth();
+  // While the boot /me request is in flight, hold routing so we don't flash the
+  // login page (or a wrong-role view) before the server confirms who this is.
+  if (loading) return <div style={{ textAlign: 'center', padding: 80 }}><Spin size="large" /></div>;
   return (
     <Shell>
       <Routes>

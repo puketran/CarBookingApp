@@ -5,6 +5,7 @@ import { useLang } from '../i18n';
 import FeedbackButton from '../components/FeedbackButton';
 import NotificationBell from '../components/NotificationBell';
 import LanguageSelector from '../components/LanguageSelector';
+import { useGuidelines } from '../components/GuidelinesModal';
 
 // Driver shell — mobile-first, like the employee one but driver-specific tabs.
 const TABS = [
@@ -17,6 +18,7 @@ export default function DriverLayout({ children }) {
   const location = useLocation();
   const { logout } = useAuth();
   const { t } = useLang();
+  const { show: showGuidelines } = useGuidelines();
 
   return (
     <div style={{ maxWidth: 480, margin: '0 auto', minHeight: '100vh', display: 'flex', flexDirection: 'column', background: '#f5f7fb' }}>
@@ -25,6 +27,7 @@ export default function DriverLayout({ children }) {
         <LanguageSelector />
         <NotificationBell />
         <FeedbackButton />
+        <Button size="small" title={t('guide.help')} onClick={showGuidelines}>?</Button>
         <Button size="small" onClick={() => { logout(); navigate('/login'); }}>{t('common.logout')}</Button>
       </Layout.Header>
 

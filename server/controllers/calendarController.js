@@ -12,7 +12,13 @@ async function month(req, res, next) {
     const daysInMonth = new Date(y, mo, 0).getDate();
     const days = Array.from({ length: daysInMonth }, (_, i) => `${m}-${String(i + 1).padStart(2, '0')}`);
 
-    const [vehicles] = await pool.query('SELECT vehicle_id, vehicle_name, status FROM vehicles ORDER BY vehicle_id');
+    // Only vehicles that are active AND have an assigned, active driver.
+    const [vehicles] = await pool.query(
+      `SELECT v.vehicle_id, v.vehicle_name, v.status
+       FROM vehicles v JOIN users u ON v.driver_user_id = u.user_id
+       WHERE v.status = 'active' AND u.is_active = 1
+       ORDER BY v.vehicle_id`,
+    );
     const [counts] = await pool.query(
       `SELECT vehicle_id, DATE_FORMAT(booking_date, '%Y-%m-%d') AS d, COUNT(*) AS booked
        FROM bookings

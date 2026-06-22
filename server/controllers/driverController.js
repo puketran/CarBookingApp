@@ -42,7 +42,7 @@ async function actOnTrip(req, res, next) {
     const { action } = req.body;
     const reason = (req.body.reason || '').toString().trim();
     const [[b]] = await pool.query(
-      `SELECT b.booking_id, b.status, b.user_id, b.driver_confirmed, (b.booking_date = CURDATE()) AS is_today
+      `SELECT b.booking_id, b.status, b.user_id, b.driver_confirmed, b.booking_type, (b.booking_date = CURDATE()) AS is_today
        FROM bookings b JOIN vehicles v ON b.vehicle_id = v.vehicle_id
        WHERE b.booking_id = ? AND v.driver_user_id = ?`,
       [req.params.id, req.user.user_id],
@@ -50,8 +50,11 @@ async function actOnTrip(req, res, next) {
     if (!b) {
       return res.status(404).json({ error: 'NOT_FOUND', message: 'Resource does not exist' });
     }
-    // No admin approval step: the driver confirms/denies pending (or approved) trips directly.
-    const actionable = b.status === 'pending' || b.status === 'approved';
+    // Regular trips: the driver confirms/denies pending or approved directly.
+    // Full-day trips: only after an admin has approved them (status === 'approved').
+    const actionable = b.booking_type === 'full_day'
+      ? b.status === 'approved'
+      : (b.status === 'pending' || b.status === 'approved');
 
     if (action === 'confirm') {
       if (!actionable) return res.status(422).json({ error: 'VALIDATION_ERROR', message: 'This trip can no longer be confirmed' });

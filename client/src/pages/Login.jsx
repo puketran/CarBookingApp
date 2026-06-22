@@ -10,6 +10,7 @@ const landing = (role) => (isAdmin(role) ? '/admin' : role === 'driver' ? '/driv
 
 export default function Login() {
   const [mode, setMode] = useState('login'); // 'login' | 'request' | 'reset'
+  const [purpose, setPurpose] = useState('reset'); // 'register' | 'reset'
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
@@ -31,25 +32,32 @@ export default function Login() {
   const requestCode = async ({ email: e }) => {
     setLoading(true);
     try {
-      await api.post('/auth/request-otp', { email: e });
+      await api.post('/auth/request-otp', { email: e, purpose });
       setEmail(e);
       setMode('reset');
       message.success(t('login.codeSent'));
-    } catch {
-      message.error(t('login.error'));
+    } catch (err) {
+      // Registering an email that already has an account is rejected up-front.
+      if (err.response?.status === 409) { message.error(t('login.emailExists')); setMode('login'); }
+      else message.error(t('login.error'));
     } finally { setLoading(false); }
   };
 
   const setPw = async ({ code, password }) => {
     setLoading(true);
     try {
-      const { data } = await api.post('/auth/set-password', { email, code, password });
+      const { data } = await api.post('/auth/set-password', { email, code, password, purpose });
       login(data.token, data.user);
       navigate(landing(data.user.role), { replace: true });
-    } catch {
-      message.error(t('login.invalidCode'));
+    } catch (err) {
+      const s = err.response?.status;
+      if (s === 409) message.error(t('login.emailExists'));
+      else if (s === 404) message.error(t('login.noAccount'));
+      else message.error(t('login.invalidCode'));
     } finally { setLoading(false); }
   };
+
+  const goRequest = (p) => { setPurpose(p); setMode('request'); };
 
   return (
     <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 80 }}>
@@ -67,13 +75,14 @@ export default function Login() {
               <Input.Password />
             </Form.Item>
             <Button type="primary" htmlType="submit" block loading={loading}>{t('login.signIn')}</Button>
-            <Button type="link" block onClick={() => setMode('request')}>{t('login.setForgot')}</Button>
+            <Button type="link" block onClick={() => goRequest('register')}>{t('login.register')}</Button>
+            <Button type="link" block onClick={() => goRequest('reset')}>{t('login.forgot')}</Button>
           </Form>
         )}
 
         {mode === 'request' && (
           <Form layout="vertical" onFinish={requestCode}>
-            <Typography.Paragraph type="secondary">{t('login.requestHint')}</Typography.Paragraph>
+            <Typography.Paragraph type="secondary">{t(purpose === 'register' ? 'login.registerHint' : 'login.forgotHint')}</Typography.Paragraph>
             <Form.Item name="email" label={t('login.email')} rules={[{ required: true, type: 'email' }]}>
               <Input placeholder="you@company.com" autoFocus />
             </Form.Item>

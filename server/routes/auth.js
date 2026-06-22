@@ -29,6 +29,7 @@ router.post(
 router.post(
   '/request-otp',
   body('email').isEmail().withMessage('A valid email is required'),
+  body('purpose').optional().isIn(['register', 'reset']),
   validate,
   otpLimiter,
   requestOtp,
@@ -39,6 +40,7 @@ router.post(
   body('email').isEmail().withMessage('A valid email is required'),
   body('code').isLength({ min: 6, max: 6 }).isNumeric().withMessage('Code must be 6 digits'),
   body('password').isString().isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
+  body('purpose').optional().isIn(['register', 'reset']),
   validate,
   setPassword,
 );

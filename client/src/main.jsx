@@ -7,6 +7,7 @@ import 'antd/dist/reset.css';
 import App from './App';
 import ErrorBoundary from './components/ErrorBoundary';
 import { AuthProvider } from './context/AuthContext';
+import { GuidelinesProvider } from './components/GuidelinesModal';
 import { LanguageProvider, useLang, ANTD_LOCALES } from './i18n';
 import { themeConfig } from './theme';
 
@@ -18,7 +19,9 @@ function Root() {
         <BrowserRouter>
           <AuthProvider>
             <ErrorBoundary>
-              <App />
+              <GuidelinesProvider>
+                <App />
+              </GuidelinesProvider>
             </ErrorBoundary>
           </AuthProvider>
         </BrowserRouter>

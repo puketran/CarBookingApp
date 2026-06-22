@@ -5,6 +5,7 @@ import { useLang } from '../i18n';
 import FeedbackButton from '../components/FeedbackButton';
 import NotificationBell from '../components/NotificationBell';
 import LanguageSelector from '../components/LanguageSelector';
+import { useGuidelines } from '../components/GuidelinesModal';
 
 // Desktop console shell: dark sidebar + header. Sidebar collapses on small screens.
 const ITEMS = [
@@ -23,6 +24,7 @@ export default function AdminLayout({ children }) {
   const location = useLocation();
   const { user, logout } = useAuth();
   const { t } = useLang();
+  const { show: showGuidelines } = useGuidelines();
   const items = ITEMS.map((i) => ({ key: i.key, label: t(i.labelKey) }));
 
   return (
@@ -38,6 +40,7 @@ export default function AdminLayout({ children }) {
           <Typography.Text style={{ color: '#fff' }}>{user.name} ({user.role})</Typography.Text>
           <NotificationBell />
           <FeedbackButton />
+          <Button size="small" title={t('guide.help')} onClick={showGuidelines}>?</Button>
           <Button size="small" onClick={() => { logout(); navigate('/login'); }}>{t('common.logout')}</Button>
         </Layout.Header>
         <Layout.Content style={{ padding: 24, maxWidth: 1200, width: '100%', margin: '0 auto' }}>{children}</Layout.Content>

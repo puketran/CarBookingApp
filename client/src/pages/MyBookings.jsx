@@ -98,7 +98,7 @@ export default function MyBookings() {
             <Descriptions column={1} size="small" bordered>
               <Descriptions.Item label={t('f.status')}><StatusBadge status={detail.status} /></Descriptions.Item>
               <Descriptions.Item label={t('f.date')}>{detail.booking_date?.slice(0, 10)}</Descriptions.Item>
-              <Descriptions.Item label={t('f.slot')}>{detail.slot_start}–{detail.slot_end}</Descriptions.Item>
+              <Descriptions.Item label={t('f.slot')}>{detail.booking_type === 'full_day' ? t('book.fullDay') : `${detail.slot_start}–${detail.slot_end}`}</Descriptions.Item>
               <Descriptions.Item label={t('f.vehicle')}>{detail.vehicle_name}</Descriptions.Item>
               <Descriptions.Item label={t('f.destination')}>{detail.destination}</Descriptions.Item>
               <Descriptions.Item label={t('f.purpose')}>{detail.purpose || '—'}</Descriptions.Item>

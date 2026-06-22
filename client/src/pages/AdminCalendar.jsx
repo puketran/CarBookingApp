@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react';
-import { Card, Button, Segmented, Space, Drawer, Spin, Tag, Empty, App } from 'antd';
+import { Card, Button, Segmented, Space, Drawer, Spin, Empty, App } from 'antd';
 import dayjs from 'dayjs';
 import api from '../api/axios';
 import StatusBadge from '../components/StatusBadge';
+import { useLang } from '../i18n';
 
 const LEGEND = [
-  { label: 'Available', color: '#52c41a' },
-  { label: 'Booked', color: '#1677ff' },
-  { label: 'Full', color: '#722ed1' },
-  { label: 'Maintenance', color: '#fa8c16' },
+  { key: 'available', color: '#52c41a' },
+  { key: 'booked', color: '#1677ff' },
+  { key: 'full', color: '#722ed1' },
 ];
 
 function cellStyle(bg) {
@@ -22,6 +22,7 @@ export default function AdminCalendar() {
   const [view, setView] = useState('Calendar');
   const [detail, setDetail] = useState(null); // {vehicle, date, bookings}
   const { message } = App.useApp();
+  const { t } = useLang();
 
   const load = async () => {
     setLoading(true);
@@ -29,7 +30,7 @@ export default function AdminCalendar() {
       const res = await api.get('/calendar', { params: { month: month.format('YYYY-MM') } });
       setData(res.data);
     } catch {
-      message.error('Could not load the calendar.');
+      message.error(t('admin.calendarLoadErr'));
     } finally {
       setLoading(false);
     }
@@ -42,42 +43,43 @@ export default function AdminCalendar() {
       const res = await api.get('/bookings', { params: { vehicle_id: vehicle.vehicle_id, date, limit: 50 } });
       setDetail({ vehicle, date, bookings: res.data.data });
     } catch {
-      message.error('Could not load that day.');
+      message.error(t('admin.calendarDayErr'));
     }
   };
 
   const renderCell = (vehicle, date) => {
-    if (vehicle.status === 'maintenance') return <div style={cellStyle('#fa8c16')}>Maint.</div>;
     const booked = vehicle.cells[date] || 0;
     const left = (data.slots_per_day || 5) - booked;
-    if (booked === 0) return <div style={cellStyle('#52c41a')} onClick={() => openCell(vehicle, date)}>Available</div>;
-    if (left <= 0) return <div style={cellStyle('#722ed1')} onClick={() => openCell(vehicle, date)}>Full</div>;
-    return <div style={cellStyle('#1677ff')} onClick={() => openCell(vehicle, date)}>{booked} booked · {left} left</div>;
+    if (booked === 0) return <div style={cellStyle('#52c41a')} onClick={() => openCell(vehicle, date)}>{t('admin.legendAvailable')}</div>;
+    if (left <= 0) return <div style={cellStyle('#722ed1')} onClick={() => openCell(vehicle, date)}>{t('admin.legendFull')}</div>;
+    return <div style={cellStyle('#1677ff')} onClick={() => openCell(vehicle, date)}>{t('admin.cellBookedLeft', { booked, left })}</div>;
   };
+
+  const legendLabel = { available: t('admin.legendAvailable'), booked: t('admin.legendBooked'), full: t('admin.legendFull') };
 
   return (
     <Card
-      title="Calendar"
+      title={t('nav.calendar')}
       extra={
         <Space>
           <Button onClick={() => setMonth(month.subtract(1, 'month'))}>‹</Button>
           <b>{month.format('MMMM YYYY')}</b>
           <Button onClick={() => setMonth(month.add(1, 'month'))}>›</Button>
-          <Segmented options={['Calendar', 'Timeline']} value={view} onChange={setView} />
+          <Segmented options={[{ value: 'Calendar', label: t('nav.calendar') }, { value: 'Timeline', label: t('admin.timeline') }]} value={view} onChange={setView} />
         </Space>
       }
     >
       <Space style={{ marginBottom: 12 }} wrap>
         {LEGEND.map((l) => (
-          <span key={l.label} style={{ fontSize: 12 }}>
+          <span key={l.key} style={{ fontSize: 12 }}>
             <span style={{ display: 'inline-block', width: 12, height: 12, background: l.color, borderRadius: 3, marginRight: 4, verticalAlign: 'middle' }} />
-            {l.label}
+            {legendLabel[l.key]}
           </span>
         ))}
       </Space>
 
       {view === 'Timeline' ? (
-        <Empty description="Timeline view — coming soon" />
+        <Empty description={t('admin.timelineSoon')} />
       ) : loading || !data ? (
         <div style={{ textAlign: 'center', padding: 32 }}><Spin /></div>
       ) : (
@@ -85,7 +87,7 @@ export default function AdminCalendar() {
           <table style={{ borderCollapse: 'separate', borderSpacing: 4 }}>
             <thead>
               <tr>
-                <th style={{ position: 'sticky', left: 0, background: '#fff', textAlign: 'left', padding: 4 }}>Vehicle</th>
+                <th style={{ position: 'sticky', left: 0, background: '#fff', textAlign: 'left', padding: 4 }}>{t('f.vehicle')}</th>
                 {data.days.map((d) => (
                   <th key={d} style={{ fontSize: 11, fontWeight: 500, color: '#888' }}>{d.slice(8)}</th>
                 ))}
@@ -122,7 +124,7 @@ export default function AdminCalendar() {
             </Card>
           ))
         ) : (
-          <Empty description="No bookings" />
+          <Empty description={t('admin.noBookings')} />
         )}
       </Drawer>
     </Card>

@@ -66,14 +66,19 @@ export default function DriverTrips() {
 
   const renderTrip = (tr) => {
     const isToday = tr.booking_date === today();
-    const canConfirm = (tr.status === 'pending' || tr.status === 'approved') && tr.driver_confirmed == null;
+    const isFullDay = tr.booking_type === 'full_day';
+    // Full-day trips can only be acted on once an admin has approved them.
+    const canConfirm = isFullDay
+      ? (tr.status === 'approved' && tr.driver_confirmed == null)
+      : ((tr.status === 'pending' || tr.status === 'approved') && tr.driver_confirmed == null);
     const canRun = tr.status === 'approved' && tr.driver_confirmed === 1;
+    const awaiting = isFullDay && tr.status === 'pending';
     return (
       <Card key={tr.booking_id} size="small" style={{ marginBottom: 10 }} styles={{ body: { padding: 12 } }} hoverable onClick={() => setDetail(tr)}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
           <div>
-            <b>{tr.code}</b>
-            <div style={{ color: '#666', fontSize: 13 }}>{tr.booking_date} · {tr.slot_start}–{tr.slot_end}</div>
+            <b>{tr.code}</b>{isFullDay && <Tag color="purple" style={{ marginLeft: 6 }}>{t('book.fullDay')}</Tag>}
+            <div style={{ color: '#666', fontSize: 13 }}>{tr.booking_date} · {isFullDay ? t('book.fullDay') : `${tr.slot_start}–${tr.slot_end}`}</div>
             <div style={{ color: '#666', fontSize: 13 }}>{tr.destination} · {tr.passenger_count} {t('f.passengers')}</div>
             <div style={{ color: '#666', fontSize: 13 }}>{tr.employee_name}{tr.contact_number ? ` · 📞 ${tr.contact_number}` : ''}</div>
           </div>
@@ -82,6 +87,8 @@ export default function DriverTrips() {
             {tr.driver_confirmed === 1 && <Tag color="green" style={{ marginInlineEnd: 0 }}>{t('driver.confirmed')}</Tag>}
           </div>
         </div>
+
+        {awaiting && <div style={{ marginTop: 8 }}><Typography.Text type="secondary" style={{ fontSize: 12 }}>{t('driver.awaitingApproval')}</Typography.Text></div>}
 
         {(canConfirm || canRun) && (
           <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 10 }}>
@@ -169,7 +176,7 @@ export default function DriverTrips() {
           <Descriptions column={1} size="small" bordered>
             <Descriptions.Item label={t('f.status')}><StatusBadge status={detail.status} /></Descriptions.Item>
             <Descriptions.Item label={t('f.date')}>{detail.booking_date}</Descriptions.Item>
-            <Descriptions.Item label={t('f.slot')}>{detail.slot_start}–{detail.slot_end}</Descriptions.Item>
+            <Descriptions.Item label={t('f.slot')}>{detail.booking_type === 'full_day' ? t('book.fullDay') : `${detail.slot_start}–${detail.slot_end}`}</Descriptions.Item>
             <Descriptions.Item label={t('f.employee')}>{detail.employee_name}</Descriptions.Item>
             <Descriptions.Item label={t('f.phone')}>{detail.contact_number || '—'}</Descriptions.Item>
             <Descriptions.Item label={t('f.department')}>{detail.department || '—'}</Descriptions.Item>

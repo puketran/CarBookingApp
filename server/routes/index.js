@@ -3,6 +3,7 @@
 //   Day 2: /auth/* + protected probes (/me, /admin/ping)
 //   Day 3: /vehicles, /bookings
 const express = require('express');
+const pool = require('../config/db');
 const slots = require('../config/slots');
 const auth = require('./auth');
 const vehicles = require('./vehicles');
@@ -40,9 +41,19 @@ router.use('/notifications', notifications);
 // Feedback (in-app collection).
 router.use('/feedback', feedback);
 
-// Protected probes — demonstrate JWT + role enforcement.
-router.get('/me', requireAuth, (req, res) => {
-  res.json({ user: req.user });
+// Current user — always read fresh from the DB so role/profile reflect the
+// latest server state (the JWT payload can be stale, e.g. after a role change).
+router.get('/me', requireAuth, async (req, res, next) => {
+  try {
+    const [[u]] = await pool.query(
+      'SELECT user_id, name, email, department, role FROM users WHERE user_id = ? AND is_active = TRUE',
+      [req.user.user_id],
+    );
+    if (!u) return res.status(401).json({ error: 'UNAUTHORIZED', message: 'Account not found or inactive' });
+    res.json({ user: u });
+  } catch (err) {
+    next(err);
+  }
 });
 router.get('/admin/ping', requireAuth, requireRole('admin'), (req, res) => {
   res.json({ ok: true, role: req.user.role });

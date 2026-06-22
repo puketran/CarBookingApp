@@ -6,8 +6,7 @@ const c = require('../controllers/exportController');
 const router = express.Router();
 router.use(requireAuth, requireRole('admin'));
 
-router.get('/bookings', c.bookings);
-router.get('/utilisation', c.utilisation);
-router.get('/monthly', c.monthly);
+router.get('/:report/preview', c.preview);
+router.get('/:report', c.download);
 
 module.exports = router;

@@ -6,8 +6,9 @@ import { useLang } from '../i18n';
 // Booking summary card for the employee My Bookings list.
 export default function BookingCard({ booking, onCancel, onClick }) {
   const { t } = useLang();
-  const { booking_id, vehicle_name, booking_date, slot_start, slot_end, status, image_url, passenger_count } = booking;
+  const { booking_id, vehicle_name, booking_date, slot_start, slot_end, status, image_url, passenger_count, booking_type } = booking;
   const code = booking.code || `BK-${String(booking_id).padStart(4, '0')}`;
+  const when = booking_type === 'full_day' ? t('book.fullDay') : `${slot_start}–${slot_end}`;
 
   return (
     <Card
@@ -26,7 +27,7 @@ export default function BookingCard({ booking, onCancel, onClick }) {
         <div style={{ flex: 1, minWidth: 0 }}>
           <b>{code}</b>
           <div style={{ color: '#666', fontSize: 13 }}>
-            {booking_date?.slice(0, 10)} · {slot_start}–{slot_end}
+            {booking_date?.slice(0, 10)} · {when}
           </div>
           <div style={{ color: '#666', fontSize: 13 }}>
             {vehicle_name}

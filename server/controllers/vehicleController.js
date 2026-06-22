@@ -1,5 +1,5 @@
 const pool = require('../config/db');
-const SLOTS = require('../config/slots');
+const { getDriverSlots, getVehicleSlots } = require('../services/slots');
 const { getSettings } = require('../services/settings');
 
 const pad = (n) => String(n).padStart(2, '0');
@@ -14,24 +14,32 @@ async function getAvailable(req, res, next) {
     const { date } = req.query;
 
     const [vehicles] = await pool.query(
-      "SELECT vehicle_id, vehicle_name, capacity, driver_name, image_url, transmission, parking_location FROM vehicles WHERE status = 'active' ORDER BY vehicle_id",
+      "SELECT vehicle_id, vehicle_name, capacity, driver_name, image_url, transmission, parking_location, driver_user_id FROM vehicles WHERE status = 'active' ORDER BY vehicle_id",
     );
     const [booked] = await pool.query(
-      "SELECT vehicle_id, TIME_FORMAT(slot_start, '%H:%i') AS slot_start FROM bookings WHERE booking_date = ? AND status IN ('pending','approved')",
+      "SELECT vehicle_id, TIME_FORMAT(slot_start, '%H:%i') AS slot_start FROM bookings WHERE booking_date = ? AND status IN ('pending','approved') AND booking_type = 'slot'",
       [date],
     );
+    // Vehicles reserved for the whole day by an approved full-day booking.
+    const [fullDay] = await pool.query(
+      "SELECT vehicle_id FROM bookings WHERE booking_date = ? AND booking_type = 'full_day' AND status = 'approved'",
+      [date],
+    );
+    const fullDayVehicles = new Set(fullDay.map((r) => r.vehicle_id));
 
     const takenByVehicle = {};
     for (const b of booked) {
       (takenByVehicle[b.vehicle_id] ||= new Set()).add(b.slot_start);
     }
 
-    const result = vehicles
-      .map((v) => {
-        const taken = takenByVehicle[v.vehicle_id] || new Set();
-        return { ...v, available_slots: SLOTS.filter((s) => !taken.has(s.slot_start)) };
-      })
-      .filter((v) => v.available_slots.length > 0);
+    const withSlots = await Promise.all(vehicles.map(async (v) => {
+      const { driver_user_id, ...rest } = v;
+      if (fullDayVehicles.has(v.vehicle_id)) return { ...rest, available_slots: [] };
+      const slots = await getDriverSlots(driver_user_id);
+      const taken = takenByVehicle[v.vehicle_id] || new Set();
+      return { ...rest, available_slots: slots.filter((s) => !taken.has(s.slot_start)) };
+    }));
+    const result = withSlots.filter((v) => v.available_slots.length > 0);
 
     res.json(result);
   } catch (err) {
@@ -125,12 +133,22 @@ async function availability(req, res, next) {
     const end = new Date(monday);
     end.setDate(monday.getDate() + total - 1);
 
+    const slots = await getVehicleSlots(req.params.id);
+
     const [booked] = await pool.query(
-      "SELECT DATE_FORMAT(booking_date, '%Y-%m-%d') d, TIME_FORMAT(slot_start, '%H:%i') s FROM bookings WHERE vehicle_id = ? AND status IN ('pending','approved') AND booking_date BETWEEN ? AND ?",
+      "SELECT DATE_FORMAT(booking_date, '%Y-%m-%d') d, TIME_FORMAT(slot_start, '%H:%i') s FROM bookings WHERE vehicle_id = ? AND status IN ('pending','approved') AND booking_type = 'slot' AND booking_date BETWEEN ? AND ?",
       [req.params.id, ymd(monday), ymd(end)],
     );
     const takenByDay = {};
     for (const r of booked) (takenByDay[r.d] ||= []).push(r.s);
+
+    // Full-day bookings on this vehicle in range, keyed by day → status.
+    const [fd] = await pool.query(
+      "SELECT DATE_FORMAT(booking_date, '%Y-%m-%d') d, status FROM bookings WHERE vehicle_id = ? AND status IN ('pending','approved') AND booking_type = 'full_day' AND booking_date BETWEEN ? AND ?",
+      [req.params.id, ymd(monday), ymd(end)],
+    );
+    const fullDayByDay = {};
+    for (const r of fd) fullDayByDay[r.d] = r.status === 'approved' ? 'approved' : (fullDayByDay[r.d] || 'pending');
 
     const days = [];
     for (let i = 0; i < total; i += 1) {
@@ -138,15 +156,18 @@ async function availability(req, res, next) {
       d.setDate(monday.getDate() + i);
       const date = ymd(d);
       const taken = takenByDay[date] || [];
+      const full_day = fullDayByDay[date] || 'none';
       days.push({
         date,
         dow: DOW[d.getDay()],
         past: date < ymd(today),
-        open: SLOTS.length - taken.length,
+        // An approved full-day closes the whole day for slot bookings.
+        open: full_day === 'approved' ? 0 : slots.length - taken.length,
         takenSlots: taken,
+        full_day,
       });
     }
-    res.json({ weeks: booking_weeks, days });
+    res.json({ weeks: booking_weeks, slots, days });
   } catch (err) {
     next(err);
   }

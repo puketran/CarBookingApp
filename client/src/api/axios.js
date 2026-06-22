@@ -17,7 +17,6 @@ api.interceptors.response.use(
     const onLogin = window.location.pathname.startsWith('/login');
     if (err.response?.status === 401 && !onLogin) {
       localStorage.removeItem('token');
-      localStorage.removeItem('user');
       window.location.href = '/login';
     }
     return Promise.reject(err);

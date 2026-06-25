@@ -14,6 +14,7 @@ router.post(
   '/users',
   body('email').isEmail().withMessage('valid email required'),
   body('role').optional().isIn(['employee', 'driver', 'admin']),
+  body('password').optional({ checkFalsy: true }).isLength({ min: 6 }).withMessage('password must be at least 6 characters'),
   validate,
   c.createUser,
 );
@@ -22,6 +23,7 @@ router.patch(
   param('id').isInt(),
   body('role').optional().isIn(['employee', 'driver', 'admin']),
   body('email').optional().isEmail().withMessage('valid email required'),
+  body('password').optional({ checkFalsy: true }).isLength({ min: 6 }).withMessage('password must be at least 6 characters'),
   validate,
   c.updateUser,
 );

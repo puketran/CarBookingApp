@@ -89,4 +89,23 @@ async function breakdown(req, res, next) {
   }
 }
 
-module.exports = { summary, bookingTrend, peakHours, breakdown };
+// GET /dashboard/inbox?since=ISO — what needs the admin's attention right now:
+// full-day requests awaiting approval + slot bookings created since their last visit
+// (slots auto-approve, so they're informational, not action items).
+async function inbox(req, res, next) {
+  try {
+    const since = req.query.since && /^\d{4}-\d{2}-\d{2}/.test(req.query.since) ? req.query.since : daysAgo(1);
+    const [[{ full_day_pending }]] = await pool.query(
+      "SELECT COUNT(*) AS full_day_pending FROM bookings WHERE booking_type = 'full_day' AND status = 'pending'",
+    );
+    const [[{ new_slots }]] = await pool.query(
+      "SELECT COUNT(*) AS new_slots FROM bookings WHERE booking_type = 'slot' AND status NOT IN ('cancelled','rejected') AND created_at > ?",
+      [since],
+    );
+    res.json({ full_day_pending, new_slots });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { summary, bookingTrend, peakHours, breakdown, inbox };

@@ -3,6 +3,7 @@ import { Card, Button, Segmented, Space, Drawer, Spin, Empty, App } from 'antd';
 import dayjs from 'dayjs';
 import api from '../api/axios';
 import StatusBadge from '../components/StatusBadge';
+import BookingDetailModal from '../components/BookingDetailModal';
 import { useLang } from '../i18n';
 
 const LEGEND = [
@@ -21,6 +22,7 @@ export default function AdminCalendar() {
   const [loading, setLoading] = useState(false);
   const [view, setView] = useState('Calendar');
   const [detail, setDetail] = useState(null); // {vehicle, date, bookings}
+  const [detailId, setDetailId] = useState(null); // booking opened from the drawer
   const { message } = App.useApp();
   const { t } = useLang();
 
@@ -45,6 +47,12 @@ export default function AdminCalendar() {
     } catch {
       message.error(t('admin.calendarDayErr'));
     }
+  };
+
+  // After a booking changes from the detail modal, refresh the open day + the grid counts.
+  const onBookingChanged = () => {
+    if (detail) openCell(detail.vehicle, detail.date);
+    load();
   };
 
   const renderCell = (vehicle, date) => {
@@ -115,9 +123,9 @@ export default function AdminCalendar() {
       >
         {detail?.bookings?.length ? (
           detail.bookings.map((b) => (
-            <Card key={b.booking_id} size="small" style={{ marginBottom: 8 }}>
+            <Card key={b.booking_id} size="small" hoverable style={{ marginBottom: 8 }} onClick={() => setDetailId(b.booking_id)}>
               <Space style={{ justifyContent: 'space-between', width: '100%' }}>
-                <span><b>{b.code}</b> · {b.slot_start}–{b.slot_end}</span>
+                <span><b>{b.code}</b> · {b.booking_type === 'full_day' ? t('book.fullDay') : `${b.slot_start}–${b.slot_end}`}</span>
                 <StatusBadge status={b.status} />
               </Space>
               <div style={{ fontSize: 13, color: '#666' }}>{b.employee_name} → {b.destination}</div>
@@ -127,6 +135,8 @@ export default function AdminCalendar() {
           <Empty description={t('admin.noBookings')} />
         )}
       </Drawer>
+
+      <BookingDetailModal bookingId={detailId} onClose={() => setDetailId(null)} onChanged={onBookingChanged} />
     </Card>
   );
 }

@@ -1,6 +1,7 @@
 const pool = require('../config/db');
 const settingsService = require('../services/settings');
 const { DEFAULT_SLOTS } = require('../services/slots');
+const { hashPassword } = require('../services/password');
 
 // GET /admin/users — users with this-month no-show count + block status.
 async function listUsers(req, res, next) {
@@ -33,6 +34,7 @@ async function updateUser(req, res, next) {
     if (has('role')) { set.push('role = ?'); params.push(b.role); }
     if (has('is_active')) { set.push('is_active = ?'); params.push(b.is_active ? 1 : 0); }
     if (has('booking_blocked_until')) { set.push('booking_blocked_until = ?'); params.push(b.booking_blocked_until || null); }
+    if (has('password') && b.password) { set.push('password_hash = ?'); params.push(hashPassword(b.password)); }
     if (set.length) {
       params.push(req.params.id);
       await pool.query(`UPDATE users SET ${set.join(', ')} WHERE user_id = ?`, params);
@@ -145,9 +147,11 @@ async function createUser(req, res, next) {
     const email = String(req.body.email).toLowerCase().trim();
     const { name, department } = req.body;
     const role = ['employee', 'driver', 'admin'].includes(req.body.role) ? req.body.role : 'employee';
+    // Optional: admin sets the password directly, so the user can log in without the OTP flow.
+    const password_hash = req.body.password ? hashPassword(req.body.password) : null;
     const [r] = await pool.query(
-      'INSERT INTO users (email, name, department, role) VALUES (?, ?, ?, ?)',
-      [email, name || null, department || null, role],
+      'INSERT INTO users (email, name, department, role, password_hash) VALUES (?, ?, ?, ?, ?)',
+      [email, name || null, department || null, role, password_hash],
     );
     res.status(201).json({ user_id: r.insertId, email, role });
   } catch (err) {

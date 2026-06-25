@@ -35,6 +35,7 @@ export default function BookVehicle() {
   const [vehicleId, setVehicleId] = useState(null);
   const [avail, setAvail] = useState(null); // { weeks, slots, days }
   const [date, setDate] = useState(null);
+  const [endDate, setEndDate] = useState(null); // full-day range end (null = single day)
   const [slot, setSlot] = useState(null);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -56,6 +57,7 @@ export default function BookVehicle() {
   const pickVehicle = async (id) => {
     setVehicleId(id);
     setDate(null);
+    setEndDate(null);
     setSlot(null);
     setLoading(true);
     try {
@@ -83,6 +85,7 @@ export default function BookVehicle() {
       const { data } = await api.post('/bookings', {
         vehicle_id: vehicleId, booking_date: date, slot_start, slot_end,
         booking_type: isFullDay ? 'full_day' : 'slot',
+        end_date: isFullDay ? (endDate || date) : undefined,
         destination: v.destination, purpose: v.purpose, passenger_count: v.passenger_count,
         contact_number: v.contact_number, requester_name: v.requester_name, department: v.department,
       });
@@ -94,6 +97,8 @@ export default function BookVehicle() {
       const s = err.response?.status;
       if (code === 'FULLDAY_TOO_SOON') message.error(t('book.fullDayTooSoon'));
       else if (code === 'FULLDAY_BLOCKED') message.error(t('book.fullDayBlocked'));
+      else if (code === 'INVALID_RANGE') message.error(t('book.rangeInvalid'));
+      else if (code === 'RANGE_TOO_LONG') message.error(err.response.data?.message || t('book.failed'));
       else if (s === 409) { message.error(isFullDay ? (err.response.data?.message || t('book.failed')) : t('book.slotTaken')); pickVehicle(vehicleId); }
       else if (s === 403) message.error(err.response.data?.message || t('book.failed'));
       else message.error(err.response?.data?.message || t('book.failed'));
@@ -121,11 +126,11 @@ export default function BookVehicle() {
             <Segmented
               block
               value={mode}
-              onChange={(m) => { setMode(m); setDate(null); setSlot(null); }}
+              onChange={(m) => { setMode(m); setDate(null); setEndDate(null); setSlot(null); }}
               options={[{ label: t('book.modeSlot'), value: 'slot' }, { label: t('book.modeFullDay'), value: 'full_day' }]}
               style={{ marginBottom: 10 }}
             />
-            {isFullDay && <Alert type="info" showIcon style={{ marginBottom: 10 }} message={t('book.fullDayHint')} />}
+            {isFullDay && <Alert type="info" showIcon style={{ marginBottom: 10 }} message={t('book.fullDayHint')} description={date && !endDate ? t('book.rangePickEnd', { date }) : t('book.rangeHint')} />}
             <div style={{ color: '#666', marginBottom: 8 }}>{selectedVehicle?.vehicle_name} · {t('book.pickDay')} <span style={{ color: '#389e0d' }}>{t('book.greenOpen')}</span></div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 6, fontSize: 11, color: '#999', textAlign: 'center', marginBottom: 4 }}>
               {['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map((d) => <div key={d}>{d}</div>)}
@@ -138,8 +143,16 @@ export default function BookVehicle() {
                   const tooSoon = isFullDay && dayjs(d.date).diff(dayjs().startOf('day'), 'day') < FULLDAY_ADVANCE_DAYS;
                   const fullTaken = isFullDay && d.full_day && d.full_day !== 'none';
                   const blocked = isFullDay ? (tooSoon || fullTaken) : d.open === 0;
-                  const state = date === d.date ? 'selected' : (d.past || blocked) ? 'disabled' : 'open';
-                  const go = () => { setDate(d.date); if (isFullDay) { setSlot('full'); setStep(3); } else { setSlot(null); setStep(2); } };
+                  // Full-day is a date range: first pick = start, a later pick = end.
+                  const inRange = isFullDay && date && d.date >= date && d.date <= (endDate || date);
+                  const state = (isFullDay ? inRange : date === d.date) ? 'selected' : (d.past || blocked) ? 'disabled' : 'open';
+                  const go = () => {
+                    if (!isFullDay) { setDate(d.date); setSlot(null); setStep(2); return; }
+                    setSlot('full');
+                    if (!date || endDate) { setDate(d.date); setEndDate(null); }   // start fresh
+                    else if (d.date < date) { setDate(d.date); setEndDate(null); } // clicked earlier → new start
+                    else { setEndDate(d.date); setStep(3); }                       // end (or same day) → continue
+                  };
                   return <div key={d.date}>{block(state, go, d.date.slice(8))}</div>;
                 })}
               </div>
@@ -167,7 +180,7 @@ export default function BookVehicle() {
         <Form layout="vertical" form={form} initialValues={{ passenger_count: 1, requester_name: user?.name, department: user?.department }}>
           <Descriptions size="small" column={1} style={{ marginBottom: 12 }}>
             <Descriptions.Item label={t('f.vehicle')}>{selectedVehicle?.vehicle_name}</Descriptions.Item>
-            <Descriptions.Item label={t('f.date')}>{date} · {isFullDay ? t('book.fullDay') : slot}</Descriptions.Item>
+            <Descriptions.Item label={t('f.date')}>{isFullDay && endDate && endDate !== date ? `${date} → ${endDate}` : date} · {isFullDay ? t('book.fullDay') : slot}</Descriptions.Item>
           </Descriptions>
           <div style={{ marginBottom: 6, fontSize: 13, color: '#666' }}>{t('book.quickBook')}</div>
           <Space wrap style={{ marginBottom: 12 }}>

@@ -94,6 +94,7 @@ export default function AdminUsers() {
           <Form.Item name="name" label={t('profile.name')}><Input /></Form.Item>
           <Form.Item name="department" label={t('f.department')}><Input /></Form.Item>
           <Form.Item name="role" label={t('profile.role')}><Select options={ROLES.map((x) => ({ value: x, label: t(`role.${x}`) }))} /></Form.Item>
+          <Form.Item name="password" label={t('admin.password')} extra={t('admin.passwordHint')} rules={[{ min: 6, message: t('admin.passwordMin') }]}><Input.Password autoComplete="new-password" /></Form.Item>
         </Form>
       </Modal>
 
@@ -102,6 +103,7 @@ export default function AdminUsers() {
           <Form.Item name="name" label={t('profile.name')}><Input /></Form.Item>
           <Form.Item name="email" label={t('profile.email')} rules={[{ required: true, type: 'email' }]}><Input /></Form.Item>
           <Form.Item name="department" label={t('f.department')}><Input /></Form.Item>
+          <Form.Item name="password" label={t('admin.setPassword')} extra={t('admin.setPasswordHint')} rules={[{ min: 6, message: t('admin.passwordMin') }]}><Input.Password autoComplete="new-password" /></Form.Item>
         </Form>
       </Modal>
     </Card>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Row, Col, Card, Segmented, Spin, Empty, Typography, App } from 'antd';
+import { Row, Col, Card, Segmented, Spin, Empty, Typography, Modal, App } from 'antd';
+import { useNavigate } from 'react-router-dom';
 import {
   AreaChart, Area, BarChart, Bar, Cell, PieChart, Pie, Legend,
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
@@ -19,8 +20,23 @@ export default function AdminDashboard() {
   const [peak, setPeak] = useState([]);
   const [breakdown, setBreakdown] = useState({ by_status: [], by_type: { slot: 0, full_day: 0 } });
   const [loading, setLoading] = useState(false);
+  const [inbox, setInbox] = useState(null); // { full_day_pending, new_slots } when popup is showing
   const { message } = App.useApp();
   const { t } = useLang();
+  const navigate = useNavigate();
+
+  // On arrival, surface what needs attention (pending full-day + slots since last visit).
+  useEffect(() => {
+    const SEEN_KEY = 'adminInboxSeen';
+    const since = localStorage.getItem(SEEN_KEY) || '';
+    (async () => {
+      try {
+        const { data } = await api.get('/dashboard/inbox', { params: since ? { since } : {} });
+        localStorage.setItem(SEEN_KEY, new Date().toISOString());
+        if (data.full_day_pending > 0 || data.new_slots > 0) setInbox(data);
+      } catch { /* non-blocking */ }
+    })();
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -75,6 +91,18 @@ export default function AdminDashboard() {
 
   return (
     <Spin spinning={loading}>
+      <Modal
+        open={!!inbox}
+        title={t('admin.inboxTitle')}
+        onCancel={() => setInbox(null)}
+        onOk={() => { setInbox(null); navigate('/admin'); }}
+        okText={t('admin.inboxGo')}
+        cancelText={t('admin.close')}
+      >
+        <p style={{ fontSize: 15 }}>{t('admin.inboxFullDay', { n: inbox?.full_day_pending || 0 })}</p>
+        <p style={{ fontSize: 15 }}>{t('admin.inboxNewSlots', { n: inbox?.new_slots || 0 })}</p>
+      </Modal>
+
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
         <Typography.Title level={4} style={{ margin: 0 }}>{t('nav.dashboard')}</Typography.Title>
         <Segmented options={rangeOptions} value={days} onChange={setDays} />

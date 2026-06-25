@@ -19,6 +19,7 @@ router.post(
   requireAuth,
   body('vehicle_id').isInt().withMessage('vehicle_id must be an integer'),
   body('booking_date').isISO8601().withMessage('booking_date must be YYYY-MM-DD'),
+  body('end_date').optional().isISO8601().withMessage('end_date must be YYYY-MM-DD'),
   body('slot_start').matches(/^\d{2}:\d{2}$/).withMessage('slot_start must be HH:MM'),
   body('slot_end').matches(/^\d{2}:\d{2}$/).withMessage('slot_end must be HH:MM'),
   body('booking_type').optional().isIn(['slot', 'full_day']).withMessage('invalid booking_type'),

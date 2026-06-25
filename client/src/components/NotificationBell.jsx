@@ -3,10 +3,18 @@ import { Badge, Dropdown, Button, List, Empty } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import { useLang } from '../i18n';
+import BookingDetailModal from './BookingDetailModal';
+
+// A booking notification's link carries the booking id as ?focus=<id>.
+function bookingIdFromLink(link) {
+  const m = /[?&]focus=(\d+)/.exec(link || '');
+  return m ? Number(m[1]) : null;
+}
 
 export default function NotificationBell() {
   const [unread, setUnread] = useState(0);
   const [items, setItems] = useState([]);
+  const [detailId, setDetailId] = useState(null);
   const navigate = useNavigate();
   const { t } = useLang();
 
@@ -32,7 +40,10 @@ export default function NotificationBell() {
   const openItem = async (n) => {
     try { if (!n.is_read) await api.patch(`/notifications/${n.id}/read`); } catch { /* ignore */ }
     pollCount();
-    navigate(n.link || '/notifications');
+    // Booking notifications open an actionable detail popup in place; others navigate.
+    const id = n.type?.startsWith('booking_') ? bookingIdFromLink(n.link) : null;
+    if (id) setDetailId(id);
+    else navigate(n.link || '/notifications');
   };
 
   const dropdownRender = () => (
@@ -61,10 +72,13 @@ export default function NotificationBell() {
   );
 
   return (
-    <Dropdown trigger={['click']} onOpenChange={loadList} popupRender={dropdownRender}>
-      <Badge count={unread} size="small">
-        <Button ghost size="small">🔔</Button>
-      </Badge>
-    </Dropdown>
+    <>
+      <Dropdown trigger={['click']} onOpenChange={loadList} popupRender={dropdownRender}>
+        <Badge count={unread} size="small">
+          <Button ghost size="small">🔔</Button>
+        </Badge>
+      </Dropdown>
+      <BookingDetailModal bookingId={detailId} onClose={() => setDetailId(null)} onChanged={pollCount} />
+    </>
   );
 }

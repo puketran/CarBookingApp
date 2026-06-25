@@ -26,6 +26,7 @@ router.patch(
   '/vehicles/:id/status',
   param('id').isInt(),
   body('status').isIn(['active', 'maintenance']).withMessage('invalid status'),
+  body('note').optional().isString().isLength({ max: 500 }),
   validate,
   c.setVehicleStatus,
 );

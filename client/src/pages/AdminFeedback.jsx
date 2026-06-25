@@ -44,6 +44,7 @@ export default function AdminFeedback() {
     { title: '#', dataIndex: 'id', width: 56 },
     { title: t('admin.colType'), dataIndex: 'category', render: (c) => <Tag color={CATEGORY_COLOR[c]}>{t(`admin.fbCat.${c}`)}</Tag> },
     { title: t('fb.message'), dataIndex: 'message' },
+    { title: t('f.employee'), dataIndex: 'employee_name', render: (n) => n || '—' },
     { title: t('admin.colFrom'), dataIndex: 'email' },
     { title: t('admin.colPage'), dataIndex: 'page' },
     {

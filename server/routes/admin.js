@@ -46,4 +46,8 @@ router.delete('/slots/:slotId', param('slotId').isInt(), validate, c.deleteSlot)
 router.get('/settings', c.getSettings);
 router.patch('/settings', c.updateSettings);
 
+// Developer tools — admin role + a separate DEVELOPER_PASSWORD gate.
+router.post('/dev/verify', body('password').isString(), validate, c.verifyDev);
+router.post('/dev/clear-bookings', body('password').isString(), validate, c.clearAllBookings);
+
 module.exports = router;

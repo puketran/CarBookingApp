@@ -175,7 +175,37 @@ async function updateSettings(req, res, next) {
   } catch (err) { next(err); }
 }
 
+// --- Developer tab (gated by DEVELOPER_PASSWORD env) ---------------------------
+// The tab is admin-only AND requires a separate password, so destructive tools
+// stay behind a deliberate extra step.
+function devPasswordOk(password) {
+  const expected = process.env.DEVELOPER_PASSWORD;
+  return Boolean(expected) && typeof password === 'string' && password === expected;
+}
+
+// POST /admin/dev/verify — unlock the developer tab.
+async function verifyDev(req, res) {
+  if (!devPasswordOk(req.body?.password)) {
+    return res.status(401).json({ error: 'UNAUTHORIZED', message: 'Wrong developer password.' });
+  }
+  res.json({ ok: true });
+}
+
+// POST /admin/dev/clear-bookings — wipe ALL bookings. Irreversible.
+async function clearAllBookings(req, res, next) {
+  try {
+    if (!devPasswordOk(req.body?.password)) {
+      return res.status(401).json({ error: 'UNAUTHORIZED', message: 'Wrong developer password.' });
+    }
+    const [r] = await pool.query('DELETE FROM bookings');
+    res.json({ deleted: r.affectedRows });
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   listUsers, updateUser, createUser, deleteUser, getSettings, updateSettings,
   listDriverSlots, createDriverSlot, updateSlot, deleteSlot,
+  verifyDev, clearAllBookings,
 };

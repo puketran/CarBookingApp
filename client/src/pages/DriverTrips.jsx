@@ -16,8 +16,11 @@ export default function DriverTrips() {
   const [loading, setLoading] = useState(false);
   const [detail, setDetail] = useState(null);
   const [declineFor, setDeclineFor] = useState(null);
+  const [noShowFor, setNoShowFor] = useState(null);
   const [reason, setReason] = useState('');
-  const [filter, setFilter] = useState('pending'); // 'pending' (default) | 'all'
+  const [maintOpen, setMaintOpen] = useState(false);
+  const [maintNote, setMaintNote] = useState('');
+  const [filter, setFilter] = useState('pending'); // 'pending' (default) | 'today' | 'all'
   const [grouped, setGrouped] = useState(false);
   const { message } = App.useApp();
   const { t } = useLang();
@@ -54,14 +57,31 @@ export default function DriverTrips() {
     setReason('');
   };
 
-  const toggleMaintenance = async (checked) => {
+  const sendNoShow = async () => {
+    await act(noShowFor, 'no_show', { reason });
+    setNoShowFor(null);
+    setReason('');
+  };
+
+  const setVehicleStatus = async (status, note) => {
     try {
-      await api.patch(`/driver/vehicles/${vehicle.vehicle_id}/status`, { status: checked ? 'maintenance' : 'active' });
-      message.success(checked ? t('status.maintenance') : t('status.active'));
+      await api.patch(`/driver/vehicles/${vehicle.vehicle_id}/status`, { status, note });
+      message.success(status === 'maintenance' ? t('status.maintenance') : t('status.active'));
       load();
     } catch {
       message.error(t('driver.vehErr'));
     }
+  };
+
+  // Turning maintenance ON prompts for a message; turning it OFF clears it.
+  const toggleMaintenance = (checked) => {
+    if (checked) { setMaintNote(vehicle.maintenance_note || ''); setMaintOpen(true); }
+    else setVehicleStatus('active');
+  };
+
+  const saveMaintenance = async () => {
+    await setVehicleStatus('maintenance', maintNote.trim());
+    setMaintOpen(false);
   };
 
   const renderTrip = (tr) => {
@@ -73,12 +93,24 @@ export default function DriverTrips() {
       : ((tr.status === 'pending' || tr.status === 'approved') && tr.driver_confirmed == null);
     const canRun = tr.status === 'approved' && tr.driver_confirmed === 1;
     const awaiting = isFullDay && tr.status === 'pending';
+    // Today's trips get a blue accent; full-day trips a purple frame.
+    const cardStyle = {
+      marginBottom: 10,
+      borderLeft: isToday ? '4px solid #1d4ed8' : undefined,
+      borderColor: isFullDay ? '#722ed1' : undefined,
+      background: isToday ? '#f0f5ff' : undefined,
+    };
     return (
-      <Card key={tr.booking_id} size="small" style={{ marginBottom: 10 }} styles={{ body: { padding: 12 } }} hoverable onClick={() => setDetail(tr)}>
+      <Card key={tr.booking_id} size="small" style={cardStyle} styles={{ body: { padding: 12 } }} hoverable onClick={() => setDetail(tr)}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
           <div>
-            <b>{tr.code}</b>{isFullDay && <Tag color="purple" style={{ marginLeft: 6 }}>{t('book.fullDay')}</Tag>}
-            <div style={{ color: '#666', fontSize: 13 }}>{tr.booking_date} · {isFullDay ? t('book.fullDay') : `${tr.slot_start}–${tr.slot_end}`}</div>
+            <b>{tr.code}</b>
+            {isToday && <Tag color="blue" style={{ marginLeft: 6 }}>{t('driver.today')}</Tag>}
+            {isFullDay && <Tag color="purple" style={{ marginLeft: 6 }}>{t('book.fullDay')}</Tag>}
+            <div style={{ marginTop: 4 }}>
+              <span style={{ color: '#666', fontSize: 13 }}>{tr.booking_date} · </span>
+              <Tag color={isFullDay ? 'purple' : 'geekblue'} style={{ fontSize: 13, fontWeight: 600 }}>{isFullDay ? t('book.fullDay') : `${tr.slot_start}–${tr.slot_end}`}</Tag>
+            </div>
             <div style={{ color: '#666', fontSize: 13 }}>{tr.destination} · {tr.passenger_count} {t('f.passengers')}</div>
             <div style={{ color: '#666', fontSize: 13 }}>{tr.employee_name}{tr.contact_number ? ` · 📞 ${tr.contact_number}` : ''}</div>
           </div>
@@ -101,7 +133,7 @@ export default function DriverTrips() {
             {canRun && (
               <Space size="middle" style={{ width: '100%' }}>
                 <Button size="large" block disabled={!isToday} onClick={() => act(tr.booking_id, 'complete')}>{t('driver.markCompleted')}</Button>
-                <Button danger size="large" block disabled={!isToday} onClick={() => act(tr.booking_id, 'no_show')}>{t('driver.noShow')}</Button>
+                <Button danger size="large" block disabled={!isToday} onClick={() => { setNoShowFor(tr.booking_id); setReason(''); }}>{t('driver.noShow')}</Button>
               </Space>
             )}
             {canRun && !isToday && <Typography.Text type="secondary" style={{ fontSize: 12 }}>{t('driver.availableOn', { date: tr.booking_date })}</Typography.Text>}
@@ -111,7 +143,11 @@ export default function DriverTrips() {
     );
   };
 
-  const visible = filter === 'pending' ? trips.filter((tr) => tr.status === 'pending') : trips;
+  const visible = filter === 'pending'
+    ? trips.filter((tr) => tr.status === 'pending')
+    : filter === 'today'
+      ? trips.filter((tr) => tr.booking_date === today())
+      : trips;
   const todays = visible.filter((tr) => tr.booking_date === today()).sort(byPriority);
   const rest = visible.filter((tr) => tr.booking_date !== today()).sort(byPriority);
   const restGroups = Object.entries(
@@ -126,6 +162,9 @@ export default function DriverTrips() {
             <span><b>{vehicle.vehicle_name}</b> · {vehicle.parking_location || '—'} <Tag color={vehicle.status === 'active' ? 'green' : 'orange'}>{t(`status.${vehicle.status}`)}</Tag></span>
             <Space size={6}><span style={{ fontSize: 12, color: '#666' }}>{t('driver.maintenance')}</span><Switch checked={vehicle.status === 'maintenance'} onChange={toggleMaintenance} /></Space>
           </Space>
+          {vehicle.status === 'maintenance' && vehicle.maintenance_note && (
+            <div style={{ marginTop: 8, fontSize: 13, color: '#d46b08' }}>📋 {vehicle.maintenance_note}</div>
+          )}
         </Card>
       )}
 
@@ -137,7 +176,7 @@ export default function DriverTrips() {
               size="small"
               value={filter}
               onChange={setFilter}
-              options={[{ label: t('driver.filterPending'), value: 'pending' }, { label: t('driver.filterAll'), value: 'all' }]}
+              options={[{ label: t('driver.filterPending'), value: 'pending' }, { label: t('driver.today'), value: 'today' }, { label: t('driver.filterAll'), value: 'all' }]}
             />
             <span style={{ fontSize: 12, color: '#666' }}>{t('driver.groupDay')}</span>
             <Switch size="small" checked={grouped} onChange={setGrouped} />
@@ -183,6 +222,7 @@ export default function DriverTrips() {
             <Descriptions.Item label={t('f.destination')}>{detail.destination}</Descriptions.Item>
             <Descriptions.Item label={t('f.purpose')}>{detail.purpose || '—'}</Descriptions.Item>
             <Descriptions.Item label={t('f.passengers')}>{detail.passenger_count}</Descriptions.Item>
+            {detail.status_note && <Descriptions.Item label={t('driver.note')}>{detail.status_note}</Descriptions.Item>}
           </Descriptions>
         )}
       </Drawer>
@@ -190,6 +230,16 @@ export default function DriverTrips() {
       <Modal title={t('driver.denyTitle')} open={!!declineFor} onCancel={() => setDeclineFor(null)} onOk={sendDecline} okText={t('common.send')} cancelText={t('common.cancel')} okButtonProps={{ danger: true }}>
         <Typography.Paragraph type="secondary">{t('driver.denyHint')}</Typography.Paragraph>
         <Input.TextArea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t('driver.reasonPh')} maxLength={500} />
+      </Modal>
+
+      <Modal title={t('driver.noShowTitle')} open={!!noShowFor} onCancel={() => setNoShowFor(null)} onOk={sendNoShow} okText={t('common.send')} cancelText={t('common.cancel')} okButtonProps={{ danger: true, disabled: !reason.trim() }}>
+        <Typography.Paragraph type="secondary">{t('driver.noShowHint')}</Typography.Paragraph>
+        <Input.TextArea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t('driver.noShowPh')} maxLength={500} />
+      </Modal>
+
+      <Modal title={t('driver.maintTitle')} open={maintOpen} onCancel={() => setMaintOpen(false)} onOk={saveMaintenance} okText={t('common.save')} cancelText={t('common.cancel')}>
+        <Typography.Paragraph type="secondary">{t('driver.maintHint')}</Typography.Paragraph>
+        <Input.TextArea rows={3} value={maintNote} onChange={(e) => setMaintNote(e.target.value)} placeholder={t('driver.maintPh')} maxLength={500} />
       </Modal>
     </>
   );

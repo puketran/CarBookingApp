@@ -22,10 +22,15 @@ async function list(req, res, next) {
   try {
     const where = [];
     const params = [];
-    if (req.query.status) { where.push('status = ?'); params.push(req.query.status); }
-    if (req.query.category) { where.push('category = ?'); params.push(req.query.category); }
+    if (req.query.status) { where.push('f.status = ?'); params.push(req.query.status); }
+    if (req.query.category) { where.push('f.category = ?'); params.push(req.query.category); }
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
-    const [rows] = await pool.query(`SELECT * FROM feedback ${whereSql} ORDER BY id DESC`, params);
+    const [rows] = await pool.query(
+      `SELECT f.*, u.name AS employee_name
+         FROM feedback f LEFT JOIN users u ON f.user_id = u.user_id
+       ${whereSql} ORDER BY f.id DESC`,
+      params,
+    );
     res.json(rows);
   } catch (err) {
     next(err);

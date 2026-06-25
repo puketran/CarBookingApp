@@ -19,6 +19,7 @@ import AdminCalendar from './pages/AdminCalendar';
 import AdminVehicles from './pages/AdminVehicles';
 import AdminReports from './pages/AdminReports';
 import AdminSettings from './pages/AdminSettings';
+import AdminDeveloper from './pages/AdminDeveloper';
 import ComingSoon from './pages/ComingSoon';
 
 function Home() {
@@ -71,6 +72,7 @@ export default function App() {
         <Route path="/admin/users" element={admin(<AdminUsers />)} />
         <Route path="/admin/reports" element={admin(<AdminReports />)} />
         <Route path="/admin/settings" element={admin(<AdminSettings />)} />
+        <Route path="/admin/developer" element={admin(<AdminDeveloper />)} />
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

@@ -62,7 +62,7 @@ async function actOnTrip(req, res, next) {
       notify(b.user_id, 'trip_confirm', `A driver confirmed your trip (booking #${b.booking_id})`, '/my-bookings');
     } else if (action === 'decline') {
       if (!actionable) return res.status(422).json({ error: 'VALIDATION_ERROR', message: 'This trip can no longer be denied' });
-      await pool.query("UPDATE bookings SET status = 'rejected', driver_confirmed = 0 WHERE booking_id = ?", [b.booking_id]);
+      await pool.query("UPDATE bookings SET status = 'rejected', driver_confirmed = 0, status_note = ? WHERE booking_id = ?", [reason || null, b.booking_id]);
       const tail = reason ? `: ${reason}` : '';
       notify(b.user_id, 'trip_declined', `A driver declined your trip (booking #${b.booking_id})${tail}`, '/my-bookings');
       notifyAdmins('trip_declined', `Driver declined booking #${b.booking_id}${tail}`, '/admin');
@@ -78,7 +78,7 @@ async function actOnTrip(req, res, next) {
         await pool.query("UPDATE bookings SET status = 'completed' WHERE booking_id = ?", [b.booking_id]);
         notify(b.user_id, 'trip_complete', `Your trip was marked completed (booking #${b.booking_id})`, '/my-bookings');
       } else {
-        await pool.query("UPDATE bookings SET status = 'no_show' WHERE booking_id = ?", [b.booking_id]);
+        await pool.query("UPDATE bookings SET status = 'no_show', status_note = ? WHERE booking_id = ?", [reason || null, b.booking_id]);
         await applyStrike(b.booking_id);
         notify(b.user_id, 'trip_no_show', `Your trip was marked as a no-show (booking #${b.booking_id})`, '/my-bookings');
       }
@@ -105,18 +105,38 @@ async function myVehicles(req, res, next) {
 }
 
 // PATCH /driver/vehicles/:id/status — toggle active/maintenance on own vehicle.
+// A maintenance message (note) is stored and surfaced to employees/admins; it is
+// cleared when the vehicle goes back to active.
 async function setVehicleStatus(req, res, next) {
   try {
     const { status } = req.body;
-    const [[v]] = await pool.query('SELECT driver_user_id FROM vehicles WHERE vehicle_id = ?', [req.params.id]);
+    const note = (req.body.note || '').toString().trim();
+    const [[v]] = await pool.query('SELECT driver_user_id, vehicle_name FROM vehicles WHERE vehicle_id = ?', [req.params.id]);
     if (!v || v.driver_user_id !== req.user.user_id) {
       return res.status(404).json({ error: 'NOT_FOUND', message: 'Resource does not exist' });
     }
-    await pool.query('UPDATE vehicles SET status = ? WHERE vehicle_id = ?', [status, req.params.id]);
+    const maintenanceNote = status === 'maintenance' ? (note || null) : null;
+    await pool.query('UPDATE vehicles SET status = ?, maintenance_note = ? WHERE vehicle_id = ?', [status, maintenanceNote, req.params.id]);
+    if (status === 'maintenance') {
+      notifyAdmins('vehicle_maintenance', `${v.vehicle_name} is under maintenance${note ? `: ${note}` : ''}`, '/admin/vehicles');
+    }
     res.json({ vehicle_id: Number(req.params.id), status });
   } catch (err) {
     next(err);
   }
 }
 
-module.exports = { trips, actOnTrip, myVehicles, setVehicleStatus };
+// GET /maintenance-notices — vehicles currently under maintenance with a message,
+// for the app-wide banner shown to employees and admins.
+async function maintenanceNotices(req, res, next) {
+  try {
+    const [rows] = await pool.query(
+      "SELECT vehicle_name, maintenance_note FROM vehicles WHERE status = 'maintenance' AND maintenance_note IS NOT NULL AND maintenance_note <> '' ORDER BY vehicle_name",
+    );
+    res.json(rows);
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { trips, actOnTrip, myVehicles, setVehicleStatus, maintenanceNotices };

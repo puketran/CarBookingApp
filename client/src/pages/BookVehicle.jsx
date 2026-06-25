@@ -71,6 +71,7 @@ export default function BookVehicle() {
   };
 
   const dayInfo = avail?.days.find((d) => d.date === date);
+  const maxDays = avail?.fullday_max_days;
   const selectedVehicle = vehicles.find((v) => v.vehicle_id === vehicleId);
   // Slots come from the vehicle's assigned driver (falls back to defaults server-side).
   const slotList = avail?.slots?.length
@@ -97,6 +98,7 @@ export default function BookVehicle() {
       const s = err.response?.status;
       if (code === 'FULLDAY_TOO_SOON') message.error(t('book.fullDayTooSoon'));
       else if (code === 'FULLDAY_BLOCKED') message.error(t('book.fullDayBlocked'));
+      else if (code === 'WEEKEND_NOT_ALLOWED') message.error(t('book.weekendBlocked'));
       else if (code === 'INVALID_RANGE') message.error(t('book.rangeInvalid'));
       else if (code === 'RANGE_TOO_LONG') message.error(err.response.data?.message || t('book.failed'));
       else if (s === 409) { message.error(isFullDay ? (err.response.data?.message || t('book.failed')) : t('book.slotTaken')); pickVehicle(vehicleId); }
@@ -131,27 +133,33 @@ export default function BookVehicle() {
               style={{ marginBottom: 10 }}
             />
             {isFullDay && <Alert type="info" showIcon style={{ marginBottom: 10 }} message={t('book.fullDayHint')} description={date && !endDate ? t('book.rangePickEnd', { date }) : t('book.rangeHint')} />}
-            <div style={{ color: '#666', marginBottom: 8 }}>{selectedVehicle?.vehicle_name} · {t('book.pickDay')} <span style={{ color: '#389e0d' }}>{t('book.greenOpen')}</span></div>
+            <div style={{ color: '#666', marginBottom: 8 }}>{selectedVehicle?.vehicle_name} · {t('book.pickDay')} <span style={{ color: '#389e0d' }}>{t('book.greenOpen')}</span> · <span style={{ color: '#999' }}>{t('book.weekendsClosed')}</span>{isFullDay && maxDays ? ` · ${t('book.rangeMaxHint', { n: maxDays })}` : ''}</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 6, fontSize: 11, color: '#999', textAlign: 'center', marginBottom: 4 }}>
               {['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map((d) => <div key={d}>{d}</div>)}
             </div>
             {weeks.map((wk, i) => (
               <div key={i} style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 6, marginBottom: 6 }}>
                 {wk.map((d) => {
+                  // Weekends are closed for every booking type.
                   // Full-day: needs ≥2 days' notice and no existing full-day that day.
                   // Slot: disabled when the day has no open slots.
                   const tooSoon = isFullDay && dayjs(d.date).diff(dayjs().startOf('day'), 'day') < FULLDAY_ADVANCE_DAYS;
                   const fullTaken = isFullDay && d.full_day && d.full_day !== 'none';
-                  const blocked = isFullDay ? (tooSoon || fullTaken) : d.open === 0;
+                  const blocked = d.weekend || (isFullDay ? (tooSoon || fullTaken) : d.open === 0);
                   // Full-day is a date range: first pick = start, a later pick = end.
                   const inRange = isFullDay && date && d.date >= date && d.date <= (endDate || date);
                   const state = (isFullDay ? inRange : date === d.date) ? 'selected' : (d.past || blocked) ? 'disabled' : 'open';
                   const go = () => {
                     if (!isFullDay) { setDate(d.date); setSlot(null); setStep(2); return; }
                     setSlot('full');
-                    if (!date || endDate) { setDate(d.date); setEndDate(null); }   // start fresh
-                    else if (d.date < date) { setDate(d.date); setEndDate(null); } // clicked earlier → new start
-                    else { setEndDate(d.date); setStep(3); }                       // end (or same day) → continue
+                    if (!date || endDate) { setDate(d.date); setEndDate(null); return; }   // start fresh
+                    if (d.date < date) { setDate(d.date); setEndDate(null); return; }       // clicked earlier → new start
+                    // End pick: enforce the max-span and no-weekend rules before continuing.
+                    const span = dayjs(d.date).diff(dayjs(date), 'day') + 1;
+                    if (maxDays && span > maxDays) { message.error(t('book.rangeTooLong', { n: maxDays })); return; }
+                    const hasWeekend = (avail?.days || []).some((x) => x.date >= date && x.date <= d.date && x.weekend);
+                    if (hasWeekend) { message.error(t('book.weekendBlocked')); return; }
+                    setEndDate(d.date); setStep(3);                                          // end (or same day) → continue
                   };
                   return <div key={d.date}>{block(state, go, d.date.slice(8))}</div>;
                 })}

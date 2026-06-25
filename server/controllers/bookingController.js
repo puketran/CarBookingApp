@@ -14,7 +14,7 @@ const BOOKING_SELECT = `
          b.contact_number, b.destination, b.purpose, b.passenger_count,
          DATE_FORMAT(b.booking_date, '%Y-%m-%d') AS booking_date, TIME_FORMAT(b.slot_start, '%H:%i') AS slot_start,
          TIME_FORMAT(b.slot_end, '%H:%i') AS slot_end, b.booking_type, b.status, b.driver_confirmed,
-         b.booking_group_id,
+         b.status_note, b.booking_group_id,
          CASE WHEN b.booking_group_id IS NULL THEN 1
               ELSE (SELECT COUNT(*) FROM bookings g WHERE g.booking_group_id = b.booking_group_id) END AS group_days,
          b.created_at, b.updated_at
@@ -27,7 +27,6 @@ const BOOKING_SELECT = `
 // in the UNIQUE (vehicle_id, booking_date, slot_start) index.
 const FULL_DAY = { slot_start: '00:00', slot_end: '23:59' };
 const FULLDAY_ADVANCE_DAYS = 2;
-const FULLDAY_MAX_DAYS = 14; // cap a multi-day reservation so a single request can't lock a vehicle for months
 
 // Inclusive list of 'YYYY-MM-DD' strings from start to end (date-only, no TZ math).
 function dateRange(start, end) {
@@ -39,6 +38,12 @@ function dateRange(start, end) {
     d.setUTCDate(d.getUTCDate() + 1);
   }
   return days;
+}
+
+// Office runs weekdays only — no bookings on Sat/Sun. (UTC parse keeps date-only stable.)
+function isWeekend(ymd) {
+  const dow = new Date(`${ymd}T00:00:00Z`).getUTCDay();
+  return dow === 0 || dow === 6;
 }
 
 async function create(req, res, next) {
@@ -69,6 +74,10 @@ async function create(req, res, next) {
 async function createSlot(req, res, next) {
   const { vehicle_id, booking_date, destination, purpose, passenger_count, contact_number, requester_name, department } = req.body;
   const { slot_start, slot_end } = req.body;
+
+  if (isWeekend(booking_date)) {
+    return res.status(422).json({ error: 'WEEKEND_NOT_ALLOWED', message: 'Bookings are not available on weekends.' });
+  }
 
   const allowedSlots = await getVehicleSlots(vehicle_id);
   if (!allowedSlots.some((s) => s.slot_start === slot_start && s.slot_end === slot_end)) {
@@ -145,8 +154,13 @@ async function createFullDay(req, res, next) {
   }
 
   const days = dateRange(booking_date, endDate);
-  if (days.length > FULLDAY_MAX_DAYS) {
-    return res.status(422).json({ error: 'RANGE_TOO_LONG', message: `A full-day reservation can span at most ${FULLDAY_MAX_DAYS} days.` });
+  const { fullday_max_days } = await getSettings();
+  if (days.length > fullday_max_days) {
+    return res.status(422).json({ error: 'RANGE_TOO_LONG', message: `A full-day reservation can span at most ${fullday_max_days} days.` });
+  }
+  // No part of the range may fall on a weekend.
+  if (days.some(isWeekend)) {
+    return res.status(422).json({ error: 'WEEKEND_NOT_ALLOWED', message: 'Full-day bookings cannot include a weekend (Sat/Sun).' });
   }
 
   const conn = await pool.getConnection();
@@ -211,10 +225,16 @@ async function list(req, res, next) {
       params.push(req.user.user_id);
     } else {
       if (req.query.date) { where.push('b.booking_date = ?'); params.push(req.query.date); }
+      if (req.query.from) { where.push('b.booking_date >= ?'); params.push(req.query.from); }
+      if (req.query.to) { where.push('b.booking_date <= ?'); params.push(req.query.to); }
       if (req.query.vehicle_id) { where.push('b.vehicle_id = ?'); params.push(req.query.vehicle_id); }
       if (req.query.status) { where.push('b.status = ?'); params.push(req.query.status); }
       if (req.query.department) { where.push('u.department = ?'); params.push(req.query.department); }
-      if (req.query.employee_name) { where.push('u.name LIKE ?'); params.push(`%${req.query.employee_name}%`); }
+      if (req.query.employee_name) {
+        // Match the snapshot requester name, the account name, or the email.
+        where.push('(COALESCE(b.requester_name, u.name) LIKE ? OR u.email LIKE ?)');
+        params.push(`%${req.query.employee_name}%`, `%${req.query.employee_name}%`);
+      }
       // ?within=N — only trips from today through N days ahead (e.g. "next 2 days").
       const within = parseInt(req.query.within, 10);
       if (within > 0) { where.push('b.booking_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL ? DAY)'); params.push(within); }

@@ -23,3 +23,7 @@ All design documents are in the `docs/` folder:
 ## Chi phí ước tính / Estimated cost
 
 ~$5/tháng (Railway Hobby plan) + $0 email = **~$5/month**.
+
+## RUN COMMAND
+cd server && npm run dev
+cd client && npm run dev

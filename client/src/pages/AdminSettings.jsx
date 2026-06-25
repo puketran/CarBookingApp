@@ -8,6 +8,7 @@ const FIELDS = [
   { key: 'bookings_per_week', labelKey: 'admin.setBookingsPerWeek', min: 1, max: 7 },
   { key: 'noshow_limit', labelKey: 'admin.setNoshowLimit', min: 1, max: 10 },
   { key: 'ban_months', labelKey: 'admin.setBanMonths', min: 1, max: 12 },
+  { key: 'fullday_max_days', labelKey: 'admin.setFulldayMaxDays', min: 1, max: 60 },
 ];
 
 export default function AdminSettings() {

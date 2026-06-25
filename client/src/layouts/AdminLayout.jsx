@@ -6,6 +6,7 @@ import FeedbackButton from '../components/FeedbackButton';
 import NotificationBell from '../components/NotificationBell';
 import LanguageSelector from '../components/LanguageSelector';
 import { useGuidelines } from '../components/GuidelinesModal';
+import MaintenanceNotice from '../components/MaintenanceNotice';
 
 // Desktop console shell: dark sidebar + header. Sidebar collapses on small screens.
 const ITEMS = [
@@ -17,6 +18,7 @@ const ITEMS = [
   { key: '/admin/reports', labelKey: 'nav.reports' },
   { key: '/admin/feedback', labelKey: 'nav.feedback' },
   { key: '/admin/settings', labelKey: 'nav.settings' },
+  { key: '/admin/developer', labelKey: 'nav.developer' },
 ];
 
 export default function AdminLayout({ children }) {
@@ -43,7 +45,7 @@ export default function AdminLayout({ children }) {
           <Button size="small" title={t('guide.help')} onClick={showGuidelines}>?</Button>
           <Button size="small" onClick={() => { logout(); navigate('/login'); }}>{t('common.logout')}</Button>
         </Layout.Header>
-        <Layout.Content style={{ padding: 24, maxWidth: 1200, width: '100%', margin: '0 auto' }}>{children}</Layout.Content>
+        <Layout.Content style={{ padding: 24, maxWidth: 1200, width: '100%', margin: '0 auto' }}><MaintenanceNotice />{children}</Layout.Content>
       </Layout>
     </Layout>
   );

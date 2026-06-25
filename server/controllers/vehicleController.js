@@ -122,7 +122,7 @@ async function active(req, res, next) {
 // GET /vehicles/:id/availability — from Monday of this week through booking_weeks*7 days.
 async function availability(req, res, next) {
   try {
-    const { booking_weeks } = await getSettings();
+    const { booking_weeks, fullday_max_days } = await getSettings();
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     // Monday of the current week (getDay: 0=Sun..6=Sat).
@@ -157,17 +157,19 @@ async function availability(req, res, next) {
       const date = ymd(d);
       const taken = takenByDay[date] || [];
       const full_day = fullDayByDay[date] || 'none';
+      const weekend = d.getDay() === 0 || d.getDay() === 6;
       days.push({
         date,
         dow: DOW[d.getDay()],
         past: date < ymd(today),
-        // An approved full-day closes the whole day for slot bookings.
-        open: full_day === 'approved' ? 0 : slots.length - taken.length,
+        weekend,
+        // Weekends are closed; an approved full-day closes the whole day for slot bookings.
+        open: weekend || full_day === 'approved' ? 0 : slots.length - taken.length,
         takenSlots: taken,
         full_day,
       });
     }
-    res.json({ weeks: booking_weeks, slots, days });
+    res.json({ weeks: booking_weeks, fullday_max_days, slots, days });
   } catch (err) {
     next(err);
   }

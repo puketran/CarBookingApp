@@ -15,6 +15,7 @@ const calendar = require('./calendar');
 const exportRoutes = require('./export');
 const notifications = require('./notifications');
 const feedback = require('./feedback');
+const driverController = require('../controllers/driverController');
 const { requireAuth } = require('../middleware/auth');
 const { requireRole } = require('../middleware/role');
 
@@ -40,6 +41,9 @@ router.use('/notifications', notifications);
 
 // Feedback (in-app collection).
 router.use('/feedback', feedback);
+
+// Vehicles under maintenance with a driver message — app-wide banner for all users.
+router.get('/maintenance-notices', requireAuth, driverController.maintenanceNotices);
 
 // Current user — always read fresh from the DB so role/profile reflect the
 // latest server state (the JWT payload can be stale, e.g. after a role change).

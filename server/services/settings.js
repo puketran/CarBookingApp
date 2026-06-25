@@ -1,6 +1,6 @@
 const pool = require('../config/db');
 
-const DEFAULTS = { booking_weeks: 2, bookings_per_week: 1, noshow_limit: 3, ban_months: 2 };
+const DEFAULTS = { booking_weeks: 2, bookings_per_week: 1, noshow_limit: 3, ban_months: 2, fullday_max_days: 14 };
 
 // All settings are numeric; merge stored values over defaults.
 async function getSettings() {

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Card, Table, Button, Select, Space, Segmented, Tag, Modal, Alert, Empty, Switch, Popover, Checkbox, App } from 'antd';
+import { Card, Table, Button, Select, Space, Segmented, Tag, Modal, Alert, Empty, Switch, Popover, Checkbox, Input, App } from 'antd';
 import dayjs from 'dayjs';
 import api from '../api/axios';
 import StatusBadge from '../components/StatusBadge';
@@ -8,12 +8,16 @@ import { useLang } from '../i18n';
 const STATUSES = ['pending', 'approved', 'rejected', 'completed', 'cancelled'];
 const INACTIVE_STATUSES = ['completed', 'cancelled', 'rejected', 'no_show'];
 
-// Quick tabs → query params for GET /bookings.
+// Quick tabs → query params for GET /bookings. (today's date is filled in at request time.)
 const TABS = {
   needs_action: { status: 'pending', sort: 'priority' },
   next2: { within: 2, sort: 'priority' },
+  today: { sort: 'priority' },
   all: {},
 };
+
+// Monday (ISO) of the week containing `d`.
+const mondayOf = (d) => d.subtract((d.day() + 6) % 7, 'day').startOf('day');
 
 // Master column list. `key` is stable and used for the persisted show/hide+order prefs.
 // `def` is true for columns shown the first time a user opens the page.
@@ -52,6 +56,11 @@ export default function AdminBookings() {
   const [status, setStatus] = useState();
   const [groupByDay, setGroupByDay] = useState(false);
   const [hideOld, setHideOld] = useState(false);
+  const [search, setSearch] = useState('');
+  const [viewMode, setViewMode] = useState('list'); // 'list' | 'grid'
+  const [weekStart, setWeekStart] = useState(() => mondayOf(dayjs()));
+  const [weekData, setWeekData] = useState([]);
+  const [weekLoading, setWeekLoading] = useState(false);
   const [colPrefs, setColPrefs] = useState(loadColPrefs);
   // Full-day approval review: { booking, conflicts, loading }
   const [review, setReview] = useState(null);
@@ -64,7 +73,9 @@ export default function AdminBookings() {
     setLoading(true);
     try {
       const params = { ...TABS[tab], limit: 100 };
+      if (tab === 'today') params.date = dayjs().format('YYYY-MM-DD');
       if (tab === 'all' && status) params.status = status;
+      if (search.trim()) params.employee_name = search.trim();
       const res = await api.get('/bookings', { params });
       setData(res.data.data);
     } catch {
@@ -77,7 +88,29 @@ export default function AdminBookings() {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, status]);
+  }, [tab, status, search]);
+
+  // Week-grid view loads its own Mon–Sun range (independent of the tab filters).
+  const loadWeek = async () => {
+    setWeekLoading(true);
+    try {
+      const from = weekStart.format('YYYY-MM-DD');
+      const to = weekStart.add(6, 'day').format('YYYY-MM-DD');
+      const params = { from, to, limit: 100 };
+      if (search.trim()) params.employee_name = search.trim();
+      const res = await api.get('/bookings', { params });
+      setWeekData(res.data.data);
+    } catch {
+      message.error(t('admin.bookingsLoadErr'));
+    } finally {
+      setWeekLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (viewMode === 'grid') loadWeek();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode, weekStart, search]);
 
   const setBookingStatus = async (id, next) => {
     try {
@@ -138,24 +171,27 @@ export default function AdminBookings() {
     status: { title: t('f.status'), dataIndex: 'status', render: (s) => <StatusBadge status={s} /> },
     actions: {
       title: t('admin.colActions'),
-      render: (_, r) => (
-        <Space>
-          {r.status === 'pending' && (
-            <>
-              <Button type="primary" size="small" onClick={() => (r.booking_type === 'full_day' ? openFullDayReview(r) : refreshAfter(r.booking_id, 'approved'))}>
-                {t('admin.approve')}
-              </Button>
-              <Button danger size="small" onClick={() => refreshAfter(r.booking_id, 'rejected')}>{t('admin.reject')}</Button>
-            </>
-          )}
-          {r.status === 'approved' && (
-            <Space>
-              <Button size="small" onClick={() => refreshAfter(r.booking_id, 'completed')}>{t('admin.complete')}</Button>
-              <Button danger size="small" onClick={() => refreshAfter(r.booking_id, 'rejected')}>{t('admin.reject')}</Button>
-            </Space>
-          )}
-        </Space>
-      ),
+      // Slot bookings are auto-approved and self-managed — only full-day bookings
+      // need an admin to approve / reject / complete them.
+      render: (_, r) => {
+        if (r.booking_type !== 'full_day') return <span style={{ color: '#bbb' }}>—</span>;
+        return (
+          <Space>
+            {r.status === 'pending' && (
+              <>
+                <Button type="primary" size="small" onClick={() => openFullDayReview(r)}>{t('admin.approve')}</Button>
+                <Button danger size="small" onClick={() => refreshAfter(r.booking_id, 'rejected')}>{t('admin.reject')}</Button>
+              </>
+            )}
+            {r.status === 'approved' && (
+              <Space>
+                <Button size="small" onClick={() => refreshAfter(r.booking_id, 'completed')}>{t('admin.complete')}</Button>
+                <Button danger size="small" onClick={() => refreshAfter(r.booking_id, 'rejected')}>{t('admin.reject')}</Button>
+              </Space>
+            )}
+          </Space>
+        );
+      },
     },
   };
 
@@ -226,16 +262,78 @@ export default function AdminBookings() {
   const tabOptions = [
     { value: 'needs_action', label: t('admin.tabNeedsAction') },
     { value: 'next2', label: t('admin.tabNext2') },
+    { value: 'today', label: t('admin.tabToday') },
     { value: 'all', label: t('my.tabAll') },
   ];
+
+  // When grouping, the first row of each day gets a separator class for visual contrast.
+  const rowClassName = (record) => (groupByDay && spanByDate[record.booking_id] > 0 ? 'ab-day-start' : '');
+
+  // Mon–Sun grid for the selected week. Booking cards sit under their day column;
+  // today's column is highlighted.
+  const renderWeekGrid = () => {
+    const todayYmd = dayjs().format('YYYY-MM-DD');
+    const days = Array.from({ length: 7 }, (_, i) => weekStart.add(i, 'day'));
+    const byDay = {};
+    for (const b of weekData) (byDay[b.booking_date?.slice(0, 10)] ||= []).push(b);
+    const rangeLabel = `${weekStart.format('DD MMM')} – ${weekStart.add(6, 'day').format('DD MMM YYYY')}`;
+    return (
+      <div>
+        <Space style={{ marginBottom: 12 }}>
+          <Button onClick={() => setWeekStart(weekStart.subtract(7, 'day'))}>← {t('admin.prevWeek')}</Button>
+          <Button onClick={() => setWeekStart(mondayOf(dayjs()))}>{t('admin.thisWeek')}</Button>
+          <Button onClick={() => setWeekStart(weekStart.add(7, 'day'))}>{t('admin.nextWeek')} →</Button>
+          <span style={{ color: '#666' }}>{rangeLabel}</span>
+        </Space>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(150px, 1fr))', gap: 8, overflowX: 'auto' }}>
+          {days.map((d) => {
+            const ymd = d.format('YYYY-MM-DD');
+            const isToday = ymd === todayYmd;
+            const list = (byDay[ymd] || []).sort((a, b) => (a.slot_start || '').localeCompare(b.slot_start || ''));
+            return (
+              <div key={ymd} style={{ border: '1px solid #eee', borderRadius: 8, background: isToday ? '#f0f5ff' : '#fff', minHeight: 120 }}>
+                <div style={{ padding: '6px 8px', borderBottom: '1px solid #eee', fontWeight: 600, color: isToday ? '#1d4ed8' : '#333' }}>
+                  {d.format('ddd')} <span style={{ color: '#999', fontWeight: 400 }}>{d.format('DD/MM')}</span>
+                </div>
+                <div style={{ padding: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {list.length === 0 && <span style={{ color: '#ccc', fontSize: 12, padding: 4 }}>—</span>}
+                  {list.map((b) => (
+                    <div key={b.booking_id} style={{ border: '1px solid #f0f0f0', borderLeft: `3px solid ${b.booking_type === 'full_day' ? '#722ed1' : '#1677ff'}`, borderRadius: 6, padding: 6, fontSize: 12 }}>
+                      <div style={{ fontWeight: 600 }}>{b.booking_type === 'full_day' ? t('book.fullDay') : `${b.slot_start}–${b.slot_end}`}</div>
+                      <div style={{ color: '#666' }}>{b.vehicle_name}</div>
+                      <div style={{ color: '#666' }}>{b.employee_name}</div>
+                      <div style={{ marginTop: 2 }}><StatusBadge status={b.status} /></div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        {weekLoading && <div style={{ textAlign: 'center', padding: 16, color: '#999' }}>{t('common.loading')}</div>}
+      </div>
+    );
+  };
 
   return (
     <Card
       title={t('nav.manageBookings')}
       extra={
         <Space wrap>
-          <Segmented options={tabOptions} value={tab} onChange={setTab} />
-          {tab === 'all' && (
+          <Segmented
+            options={[{ value: 'list', label: t('admin.viewList') }, { value: 'grid', label: t('admin.viewGrid') }]}
+            value={viewMode}
+            onChange={setViewMode}
+          />
+          <Input.Search
+            allowClear
+            placeholder={t('admin.searchEmployee')}
+            style={{ width: 200 }}
+            defaultValue={search}
+            onSearch={setSearch}
+          />
+          {viewMode === 'list' && <Segmented options={tabOptions} value={tab} onChange={setTab} />}
+          {viewMode === 'list' && tab === 'all' && (
             <Select
               allowClear
               placeholder={t('admin.filterStatus')}
@@ -245,16 +343,21 @@ export default function AdminBookings() {
               options={STATUSES.map((s) => ({ value: s, label: t(`status.${s}`) }))}
             />
           )}
-          <Space size={4}><Switch size="small" checked={groupByDay} onChange={setGroupByDay} />{t('admin.groupByDay')}</Space>
-          <Space size={4}><Switch size="small" checked={hideOld} onChange={setHideOld} />{t('admin.hideOld')}</Space>
-          <Popover trigger="click" content={columnManager} placement="bottomRight" title={t('admin.columns')}>
-            <Button>{t('admin.columns')}</Button>
-          </Popover>
-          <Button onClick={load}>{t('common.refresh')}</Button>
+          {viewMode === 'list' && <Space size={4}><Switch size="small" checked={groupByDay} onChange={setGroupByDay} />{t('admin.groupByDay')}</Space>}
+          {viewMode === 'list' && <Space size={4}><Switch size="small" checked={hideOld} onChange={setHideOld} />{t('admin.hideOld')}</Space>}
+          {viewMode === 'list' && (
+            <Popover trigger="click" content={columnManager} placement="bottomRight" title={t('admin.columns')}>
+              <Button>{t('admin.columns')}</Button>
+            </Popover>
+          )}
+          <Button onClick={() => (viewMode === 'grid' ? loadWeek() : load())}>{t('common.refresh')}</Button>
         </Space>
       }
     >
-      <Table rowKey="booking_id" columns={columns} dataSource={view} loading={loading} pagination={{ pageSize: 20 }} scroll={{ x: 'max-content' }} />
+      <style>{`.ab-day-start > td { border-top: 2px solid #1d4ed8 !important; }`}</style>
+      {viewMode === 'grid'
+        ? renderWeekGrid()
+        : <Table rowKey="booking_id" columns={columns} dataSource={view} loading={loading} rowClassName={rowClassName} pagination={{ pageSize: 20 }} scroll={{ x: 'max-content' }} />}
 
       <Modal
         title={t('admin.approveFullDay')}
